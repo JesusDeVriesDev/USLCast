@@ -1,0 +1,21 @@
+$colors: (
+  "blue":       $blue,
+  "indigo":     $indigo,
+  "purple":     $purple,
+  "pink":       $pink,
+  "red":        $red,
+  "orange":     $orange,
+  "yellow":     $yellow,
+  "green":      $green,
+  "teal":       $teal,
+  "cyan":       $cyan,
+  "black":      $black,
+  "white":      $white,
+  "red-500":    $red-500,
+  "gray-dark":  $gray-800
+);
+
+.bg-red {
+  color: $white;
+  background-color: $red-500;
+}

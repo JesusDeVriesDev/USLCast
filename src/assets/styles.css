@@ -1,0 +1,152 @@
+body {
+    background-color: #000;
+    color: #fff;
+}
+.navbar {
+    background-color: #111;
+}
+.navbar-brand {
+    color: #e60000 !important;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+.nav-link {
+    color: #fff !important;
+}
+.nav-link:hover {
+    color: #e60000 !important;
+}
+.login-container, .register-container {
+    min-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.login-card, .register-card {
+    background-color: #1c1c1c;
+    border: 2px solid #e60000;
+    border-radius: 10px;
+    padding: 2rem;
+    max-width: 450px;
+    width: 100%;
+}
+.btn-red {
+    background-color: #e60000;
+    border: none;
+}
+.btn-red:hover {
+    background-color: #b30000;
+}
+footer {
+    text-align: center;
+    padding: 1rem 0;
+    color: #bbb;
+}
+.logo {
+    display: block;
+    margin: 0 auto 1rem auto;
+    width: 100px;
+    height: 100px;
+    background-color: #e60000;
+    border-radius: 50%;
+}
+
+/* --- HERO --- */
+.hero {
+    background: radial-gradient(circle at center, #1a1a1a 0%, #000 80%);
+    padding: 4rem 0;
+}
+
+/* --- CARD DE EJEMPLO --- */
+.example-card {
+    background-color: #1c1c1c;
+    color: #fff;
+    border: 2px solid #e60000;
+    border-radius: 12px;
+    transition: transform 0.2s ease, box-shadow 0.3s ease;
+}
+.example-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 25px rgba(230, 0, 0, 0.4);
+}
+
+/* --- CTA --- */
+.bg-dark {
+    background-color: #111 !important;
+}
+
+/* --- Ajustes generales --- */
+h1, h2, h3, h4, h5 {
+    font-family: "Segoe UI", sans-serif;
+}
+
+/* --- Formularios de creación --- */
+form label {
+    font-weight: 600;
+    color: #ddd;
+}
+form input, form select {
+    border: 1px solid #e60000 !important;
+}
+form input:focus, form select:focus {
+    box-shadow: 0 0 10px rgba(230, 0, 0, 0.6);
+}
+
+/* --- Botón gris secundario --- */
+.btn-secondary {
+    background-color: #444;
+    border: none;
+}
+.btn-secondary:hover {
+    background-color: #666;
+}
+
+/* --- Tarjeta de Logout --- */
+.logout-card {
+    background-color: #1c1c1c;
+    border: 2px solid #e60000;
+    max-width: 400px;
+}
+.logout-card p {
+    color: #ccc;
+}
+
+/* --- Cards y Formularios del Setup --- */
+.card.bg-dark {
+  background-color: #1a1a1a !important;
+}
+.card h5 {
+  font-weight: bold;
+}
+textarea {
+  resize: vertical;
+}
+.form-check-input:checked {
+  background-color: #e60000;
+  border-color: #e60000;
+}
+
+/* --- Gestor de plataformas --- */
+#platforms-list input {
+    border: 1px solid #e60000;
+}
+#platforms-list input:focus {
+    box-shadow: 0 0 10px rgba(230,0,0,0.5);
+}
+
+#platforms-list input {
+  border: 1px solid #e60000;
+}
+#platforms-list input:focus {
+  box-shadow: 0 0 10px rgba(230, 0, 0, 0.5);
+}
+#plates-section table {
+  background-color: #111;
+}
+#plates-section input[type='color'] {
+  width: 50px;
+  height: 35px;
+  border: none;
+}
+
+
