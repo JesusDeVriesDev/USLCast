@@ -16,9 +16,10 @@ $stmt->execute(['id'=>$meet_id,'org'=>$sessionUserId]);
 $meet = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$meet) die("Competencia no encontrada.");
 
-// Get lifters with divisions
+// Get lifters with ALL their divisions (multiple rows per lifter if multiple divisions)
 $stmt = $pdo->prepare("
   SELECT 
+    c.id,
     c.name,
     c.team,
     c.lot_number,
@@ -32,18 +33,54 @@ $stmt = $pdo->prepare("
     c.membership_number,
     c.email,
     c.phone,
-    STRING_AGG(DISTINCT d.name, '; ') as divisions,
-    STRING_AGG(DISTINCT cd.declared_weight_class, '; ') as weight_classes
+    d.name as division_name,
+    d.gender as division_gender,
+    d.type as division_type,
+    cd.raw_or_equipped,
+    cd.declared_weight_class
   FROM competitors c
   LEFT JOIN platforms p ON c.platform_id = p.id
   LEFT JOIN competitor_divisions cd ON c.id = cd.competitor_id
   LEFT JOIN divisions d ON cd.division_id = d.id
   WHERE c.meet_id = :mid
-  GROUP BY c.id, p.name
-  ORDER BY c.lot_number, c.name
+  ORDER BY c.lot_number, c.name, d.name, cd.declared_weight_class
 ");
 $stmt->execute(['mid'=>$meet_id]);
-$lifters = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Group by lifter to show all divisions
+$lifters = [];
+foreach($rows as $row) {
+  $id = $row['id'];
+  if (!isset($lifters[$id])) {
+    $lifters[$id] = [
+      'name' => $row['name'],
+      'team' => $row['team'],
+      'lot_number' => $row['lot_number'],
+      'platform_name' => $row['platform_name'],
+      'session' => $row['session'],
+      'flight' => $row['flight'],
+      'dob' => $row['dob'],
+      'gender' => $row['gender'],
+      'body_weight' => $row['body_weight'],
+      'rack_height' => $row['rack_height'],
+      'membership_number' => $row['membership_number'],
+      'email' => $row['email'],
+      'phone' => $row['phone'],
+      'divisions' => []
+    ];
+  }
+  
+  if ($row['division_name']) {
+    $lifters[$id]['divisions'][] = [
+      'name' => $row['division_name'],
+      'gender' => $row['division_gender'],
+      'type' => $row['division_type'],
+      'raw_or_equipped' => $row['raw_or_equipped'],
+      'weight_class' => $row['declared_weight_class']
+    ];
+  }
+}
 
 // Set headers for CSV download
 $filename = "levantadores_" . preg_replace('/[^a-z0-9]+/', '_', strtolower($meet['name'])) . "_" . date('Y-m-d') . ".csv";
@@ -59,12 +96,20 @@ fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
 // Header row
 fputcsv($output, [
   'Nombre','Equipo','Lote','Plataforma','Sesión','Vuelo','Fecha Nacimiento','Género',
-  'Peso Corporal','Altura Squat','Altura Bench','Clase de Peso','División(es)','Membresía','Email','Teléfono'
+  'Peso Corporal','Altura Squat','Altura Bench','Divisiones (todas)','Membresía','Email','Teléfono'
 ]);
 
 // Data rows
 foreach($lifters as $l) {
   $rack = json_decode($l['rack_height'] ?? '{}', true);
+  
+  // Format all divisions
+  $divisionStr = '';
+  foreach($l['divisions'] as $div) {
+    if ($divisionStr) $divisionStr .= '; ';
+    $divisionStr .= $div['name'] . ' ' . $div['gender'] . ' ' . $div['type'] . ' ' . $div['raw_or_equipped'] . ' (' . $div['weight_class'] . ')';
+  }
+  
   fputcsv($output, [
     $l['name'],
     $l['team'],
@@ -77,8 +122,7 @@ foreach($lifters as $l) {
     $l['body_weight'],
     $rack['squat'] ?? '',
     $rack['bench'] ?? '',
-    $l['weight_classes'],
-    $l['divisions'],
+    $divisionStr,
     $l['membership_number'],
     $l['email'],
     $l['phone']

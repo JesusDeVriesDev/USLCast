@@ -50,10 +50,32 @@ $stmt = $pdo->prepare("SELECT * FROM platforms WHERE meet_id = :mid ORDER BY id"
 $stmt->execute(['mid' => $meet_id]);
 $platforms = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// --- Cargar divisiones ---
-$stmt = $pdo->prepare("SELECT * FROM divisions WHERE meet_id = :mid ORDER BY name");
+// --- Cargar divisiones con información completa ---
+$stmt = $pdo->prepare("SELECT id, name, gender, type FROM divisions WHERE meet_id = :mid ORDER BY name");
 $stmt->execute(['mid' => $meet_id]);
 $all_divisions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// --- Cargar clases de peso por división ---
+$stmt = $pdo->prepare("
+    SELECT 
+        wc.id,
+        wc.division_id,
+        wc.name,
+        wc.min_weight,
+        wc.max_weight
+    FROM weight_classes wc
+    JOIN divisions d ON wc.division_id = d.id
+    WHERE d.meet_id = :mid
+    ORDER BY wc.division_id, wc.min_weight
+");
+$stmt->execute(['mid' => $meet_id]);
+$all_weight_classes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Organizar clases de peso por división
+$weight_classes_by_division = [];
+foreach($all_weight_classes as $wc) {
+    $weight_classes_by_division[$wc['division_id']][] = $wc;
+}
 
 // --- Cargar lifters con divisiones asociadas ---
 $stmt = $pdo->prepare("
@@ -97,7 +119,7 @@ body{background:#000;color:#fff}
 .btn-usl:hover{background:#b80000}
 .sort-arrow{font-size:0.7rem;margin-left:4px}
 .btn-delete-lifter{padding:0.2rem 0.5rem;font-size:0.8rem}
-.division-badge{display:inline-block;background:#333;padding:.2rem .5rem;margin:.1rem;border-radius:.25rem;font-size:0.75rem}
+.division-badge{display:inline-block;background:#333;padding:.3rem .6rem;margin:.2rem;border-radius:.25rem;font-size:0.8rem}
 </style>
 </head>
 
@@ -207,21 +229,21 @@ body{background:#000;color:#fff}
           <h6 class="text-light mt-3">Agregar División</h6>
           <div class="row g-2">
             <div class="col-md-6">
+              <label class="form-label small">División</label>
               <select id="select-division" class="form-select bg-dark text-light">
                 <option value="">-- Seleccionar División --</option>
                 <?php foreach($all_divisions as $d): ?>
-                  <option value="<?=$d['id']?>"><?=htmlspecialchars($d['name'])?></option>
+                  <option value="<?=$d['id']?>" data-type="<?=$d['type']?>">
+                    <?=htmlspecialchars($d['name'])?> - <?=$d['gender']?> - <?=$d['type']?>
+                  </option>
                 <?php endforeach; ?>
               </select>
             </div>
-            <div class="col-md-3">
-              <select id="select-raw-eq" class="form-select bg-dark text-light">
-                <option value="Raw">Raw</option>
-                <option value="Equipped">Equipped</option>
+            <div class="col-md-6">
+              <label class="form-label small">Clase de Peso</label>
+              <select id="select-weight-class" class="form-select bg-dark text-light" disabled>
+                <option value="">-- Primero selecciona una división --</option>
               </select>
-            </div>
-            <div class="col-md-3">
-              <input type="text" id="input-weight-class" class="form-control bg-dark text-light" placeholder="ej: 83 kg">
             </div>
           </div>
           <button class="btn btn-sm btn-usl mt-2" id="btn-add-division">+ Agregar</button>
@@ -238,6 +260,8 @@ body{background:#000;color:#fff}
 
 <script>
 const meetId = <?= json_encode($meet_id) ?>;
+const allDivisions = <?= json_encode($all_divisions) ?>;
+const weightClassesByDivision = <?= json_encode($weight_classes_by_division) ?>;
 let sortDirection = {};
 let currentLifterId = null;
 
@@ -285,6 +309,41 @@ document.querySelectorAll('th[data-sort]').forEach(th=>{
     
     rows.forEach(row=>tbody.appendChild(row));
   });
+});
+
+// ----------------------
+// CARGAR CLASES DE PESO AL SELECCIONAR DIVISIÓN
+// ----------------------
+document.getElementById('select-division').addEventListener('change', function() {
+  const divisionId = this.value;
+  const weightClassSelect = document.getElementById('select-weight-class');
+  
+  // Limpiar opciones anteriores
+  weightClassSelect.innerHTML = '<option value="">-- Seleccionar Clase de Peso --</option>';
+  
+  if (!divisionId) {
+    weightClassSelect.disabled = true;
+    return;
+  }
+  
+  // Cargar clases de peso para esta división
+  const weightClasses = weightClassesByDivision[divisionId] || [];
+  
+  if (weightClasses.length === 0) {
+    weightClassSelect.innerHTML = '<option value="">-- Sin clases de peso configuradas --</option>';
+    weightClassSelect.disabled = true;
+    return;
+  }
+  
+  // Agregar opciones
+  weightClasses.forEach(wc => {
+    const option = document.createElement('option');
+    option.value = wc.name;
+    option.textContent = wc.name;
+    weightClassSelect.appendChild(option);
+  });
+  
+  weightClassSelect.disabled = false;
 });
 
 // ----------------------
@@ -408,8 +467,8 @@ async function loadLifterDivisions() {
     const badge = document.createElement('span');
     badge.className = 'division-badge';
     badge.innerHTML = `
-      ${d.division_name} - ${d.raw_or_equipped} - ${d.declared_weight_class}
-      <button class="btn btn-sm btn-link text-danger p-0 ms-1 remove-division" data-cd-id="${d.id}">×</button>
+      ${d.division_name} - ${d.division_gender} - ${d.raw_or_equipped} (${d.declared_weight_class})
+      <button class="btn btn-sm btn-link text-danger p-0 ms-2 remove-division" data-cd-id="${d.id}" style="text-decoration:none;">×</button>
     `;
     container.appendChild(badge);
   });
@@ -436,12 +495,17 @@ async function removeDivision(cd_id) {
 }
 
 document.getElementById('btn-add-division').addEventListener('click', async ()=>{
-  const division_id = document.getElementById('select-division').value;
-  const raw_or_eq = document.getElementById('select-raw-eq').value;
-  const weight_class = document.getElementById('input-weight-class').value;
+  const divisionSelect = document.getElementById('select-division');
+  const weightClassSelect = document.getElementById('select-weight-class');
+  const division_id = divisionSelect.value;
+  const weight_class = weightClassSelect.value;
   
   if(!division_id) { alert('Selecciona una división'); return; }
-  if(!weight_class) { alert('Ingresa la clase de peso'); return; }
+  if(!weight_class) { alert('Selecciona una clase de peso'); return; }
+  
+  // Obtener el tipo (Raw/Equipped) de la división seleccionada
+  const selectedOption = divisionSelect.options[divisionSelect.selectedIndex];
+  const raw_or_eq = selectedOption.dataset.type;
   
   const res = await fetch('lifters_api.php', {
     method:'POST',
@@ -458,7 +522,10 @@ document.getElementById('btn-add-division').addEventListener('click', async ()=>
   const j = await res.json();
   if(!j.ok) alert('Error: '+j.error);
   else {
-    document.getElementById('input-weight-class').value = '';
+    // Reset selects
+    divisionSelect.value = '';
+    weightClassSelect.innerHTML = '<option value="">-- Primero selecciona una división --</option>';
+    weightClassSelect.disabled = true;
     await loadLifterDivisions();
   }
 });

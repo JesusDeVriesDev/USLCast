@@ -49,6 +49,25 @@ $stmt = $pdo->prepare("SELECT id, name, gender, type FROM divisions WHERE meet_i
 $stmt->execute(['mid' => $meet_id]);
 $divisions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// --- Obtener clases de peso para cada división ---
+$stmt = $pdo->prepare("
+    SELECT wc.id, wc.division_id, wc.name, wc.min_weight, wc.max_weight 
+    FROM weight_classes wc
+    INNER JOIN divisions d ON wc.division_id = d.id
+    WHERE d.meet_id = :mid
+    ORDER BY wc.division_id, wc.min_weight
+");
+$stmt->execute(['mid' => $meet_id]);
+$weight_classes_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Organizar clases de peso por división
+$weight_classes = [];
+foreach ($weight_classes_raw as $wc) {
+    if (!isset($weight_classes[$wc['division_id']])) {
+        $weight_classes[$wc['division_id']] = [];
+    }
+    $weight_classes[$wc['division_id']][] = $wc;
+}
 
 // --- Mensajes ---
 $errors = [];
@@ -89,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
     $emergency_name = trim($_POST['emergency_name'] ?? '');
     $emergency_phone = trim($_POST['emergency_phone'] ?? '');
     $team = trim($_POST['team'] ?? '');
+    $body_weight = trim($_POST['body_weight'] ?? ''); // NUEVO: peso corporal
 
     // Divisiones (JSON string from JS)
     $divisions_input = isset($_POST['divisions']) ? json_decode($_POST['divisions'], true) : [];
@@ -107,26 +127,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
     if (!$birthdate) $errors[] = "La fecha de nacimiento debe estar en formato MM/DD/YYYY o YYYY-MM-DD.";
     if (!in_array($gender, ['M','F'])) $errors[] = "El género es obligatorio (M o F).";
     if ($emergency_name === '' || $emergency_phone === '') $errors[] = "Contacto de emergencia (nombre y teléfono) son obligatorios.";
+    if ($body_weight === '') $errors[] = "El peso corporal es obligatorio.";
 
     // Divisiones: al menos una
     if (!is_array($divisions_input) || count($divisions_input) === 0) {
         $errors[] = "Debes añadir al menos una división.";
     } else {
-        // validar que las division_id existan para este meet y que raw_or_equipped y weight no estén vacíos
+        // validar que las division_id existan para este meet y obtener sus tipos (Raw/Equipped)
         $division_ids = array_column($divisions_input, 'division_id');
-        // preparar lista segura
         $placeholders = implode(',', array_fill(0, count($division_ids), '?'));
-        $stmt = $pdo->prepare("SELECT id FROM divisions WHERE meet_id = ? AND id IN ($placeholders)");
+        $stmt = $pdo->prepare("SELECT id, type FROM divisions WHERE meet_id = ? AND id IN ($placeholders)");
         $params = array_merge([$meet_id], $division_ids);
         $stmt->execute($params);
-        $found_ids = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-        if (count($found_ids) !== count($division_ids)) {
+        $found_divisions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (count($found_divisions) !== count($division_ids)) {
             $errors[] = "Una o más divisiones seleccionadas no existen para esta competencia.";
         }
+        
+        // Crear mapa de division_id => type para luego asignar raw_or_equipped
+        $division_types = [];
+        foreach ($found_divisions as $div) {
+            $division_types[$div['id']] = $div['type'];
+        }
+        
         foreach ($divisions_input as $i => $d) {
-            if (empty($d['raw_or_equipped']) || !in_array($d['raw_or_equipped'], ['Raw','Equipped'])) {
-                $errors[] = "La división #".($i+1)." debe indicar Raw o Equipped.";
-            }
             if (empty($d['declared_weight_class'])) {
                 $errors[] = "La división #".($i+1)." debe indicar la categoría de peso declarada.";
             }
@@ -159,10 +184,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
                 'phone' => $emergency_phone
             ];
 
-            // CORREGIDO: Eliminar declared_weight_class y raw_or_equipped de la tabla competitors
             $stmt = $pdo->prepare("INSERT INTO competitors
-                (meet_id, name, email, dob, gender, team, membership_number, phone, address, emergency_contact, created_at)
-                VALUES (:meet_id, :name, :email, :dob, :gender, :team, :membership_number, :phone, :address::jsonb, :emergency::jsonb, now())
+                (meet_id, name, email, dob, gender, team, membership_number, phone, address, emergency_contact, body_weight, created_at)
+                VALUES (:meet_id, :name, :email, :dob, :gender, :team, :membership_number, :phone, :address::jsonb, :emergency::jsonb, :body_weight, now())
                 RETURNING id");
 
             $stmt->execute([
@@ -175,17 +199,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
                 'membership_number' => $membership_number ?: null,
                 'phone' => $phone,
                 'address' => json_encode($address),
-                'emergency' => json_encode($emergency)
+                'emergency' => json_encode($emergency),
+                'body_weight' => $body_weight ?: null
             ]);
             $competitor_id = $stmt->fetchColumn();
 
-            // Insertar cada división en competitor_divisions
+            // Insertar cada división en competitor_divisions, usando el tipo de la división
             $stmtCd = $pdo->prepare("INSERT INTO competitor_divisions (competitor_id, division_id, raw_or_equipped, declared_weight_class) VALUES (:cid, :did, :roe, :dwc)");
             foreach ($divisions_input as $d) {
+                $raw_or_equipped = $division_types[$d['division_id']]; // Obtener tipo de la división
                 $stmtCd->execute([
                     'cid' => $competitor_id,
                     'did' => $d['division_id'],
-                    'roe' => $d['raw_or_equipped'],
+                    'roe' => $raw_or_equipped,
                     'dwc' => $d['declared_weight_class']
                 ]);
             }
@@ -330,6 +356,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
             <option value="F" <?= (isset($gender) && $gender==='F') ? 'selected':'' ?>>Femenino</option>
           </select>
         </div>
+        <div class="col-md-4">
+          <label class="form-label">Peso corporal (<?= htmlspecialchars($meet['units']) ?>) *</label>
+          <input name="body_weight" type="number" step="0.01" class="form-control bg-dark text-light" placeholder="Ej: 83" required value="<?= isset($body_weight)?htmlspecialchars($body_weight):'' ?>">
+        </div>
       </div>
 
       <hr class="border-danger my-3">
@@ -349,7 +379,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
     <!-- DIVISIONES -->
     <div class="form-section mb-4">
       <h5 class="text-danger">Divisiones</h5>
-      <p class="text-light small">Agrega una o más divisiones para competir. Selecciona la división (definida por el organizador), indica Raw/Equipped y la categoría de peso declarada.</p>
+      <p class="text-light small">Agrega una o más divisiones para competir. Selecciona la división y la categoría de peso.</p>
 
       <div id="divisions-list"></div>
 
@@ -370,33 +400,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
 <script>
 // Divisiones disponibles desde PHP (para poblar selects)
 const DIVISIONS = <?= json_encode($divisions) ?>;
-let divisionsState = []; // array de {division_id, raw_or_equipped, declared_weight_class}
+const WEIGHT_CLASSES = <?= json_encode($weight_classes) ?>;
+
+let divisionsState = []; // array de {division_id, declared_weight_class}
 
 function renderDivisions() {
     const container = document.getElementById('divisions-list');
     container.innerHTML = '';
     divisionsState.forEach((d, idx) => {
         const opts = DIVISIONS.map(x => `<option value="${x.id}" ${x.id==d.division_id?'selected':''}>${x.name} (${x.gender}, ${x.type})</option>`).join('');
+        
+        // Obtener clases de peso para la división seleccionada
+        const weightClassOpts = (WEIGHT_CLASSES[d.division_id] || []).map(wc => {
+            const label = wc.max_weight ? `${wc.name} (${wc.min_weight} - ${wc.max_weight} kg)` : `${wc.name} (+${wc.min_weight} kg)`;
+            return `<option value="${wc.name}" ${wc.name==d.declared_weight_class?'selected':''}>${label}</option>`;
+        }).join('');
+        
         const html = `
         <div class="card bg-dark text-light p-3 mb-3">
           <div class="row g-2 align-items-end">
-            <div class="col-md-5">
+            <div class="col-md-6">
               <label class="form-label">División *</label>
-              <select class="form-select bg-dark text-light division-select">
+              <select class="form-select bg-dark text-light division-select" data-idx="${idx}">
                 <option value="">-- Seleccionar --</option>
                 ${opts}
               </select>
             </div>
-            <div class="col-md-3">
-              <label class="form-label">Raw o Equipped *</label>
-              <select class="form-select bg-dark text-light raw-eq">
-                <option value="Raw" ${d.raw_or_equipped=='Raw'?'selected':''}>Raw</option>
-                <option value="Equipped" ${d.raw_or_equipped=='Equipped'?'selected':''}>Equipped</option>
+            <div class="col-md-5">
+              <label class="form-label">Categoría de peso *</label>
+              <select class="form-select bg-dark text-light weight-class-select" data-idx="${idx}">
+                <option value="">-- Seleccionar clase de peso --</option>
+                ${weightClassOpts}
               </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Categoría de peso declarada *</label>
-              <input class="form-control bg-dark text-light declared-weight" value="${d.declared_weight_class||''}" placeholder="Ej: 83 kg">
             </div>
             <div class="col-md-1 text-end">
               <button class="btn btn-danger btn-sm remove-division" data-idx="${idx}">🗑</button>
@@ -405,16 +440,26 @@ function renderDivisions() {
         </div>`;
         container.insertAdjacentHTML('beforeend', html);
     });
+    
     // attach events
-    document.querySelectorAll('.division-select').forEach((sel, i) => {
-        sel.addEventListener('change', e => { divisionsState[i].division_id = e.target.value; saveState(); });
+    document.querySelectorAll('.division-select').forEach((sel) => {
+        sel.addEventListener('change', e => {
+            const i = parseInt(e.target.dataset.idx, 10);
+            divisionsState[i].division_id = e.target.value;
+            divisionsState[i].declared_weight_class = ''; // Reset weight class
+            saveState();
+            renderDivisions(); // Re-render para actualizar las clases de peso
+        });
     });
-    document.querySelectorAll('.raw-eq').forEach((sel, i) => {
-        sel.addEventListener('change', e => { divisionsState[i].raw_or_equipped = e.target.value; saveState(); });
+    
+    document.querySelectorAll('.weight-class-select').forEach((sel) => {
+        sel.addEventListener('change', e => {
+            const i = parseInt(e.target.dataset.idx, 10);
+            divisionsState[i].declared_weight_class = e.target.value;
+            saveState();
+        });
     });
-    document.querySelectorAll('.declared-weight').forEach((inp, i) => {
-        inp.addEventListener('input', e => { divisionsState[i].declared_weight_class = e.target.value; saveState(); });
-    });
+    
     document.querySelectorAll('.remove-division').forEach(btn => {
         btn.addEventListener('click', e => {
             const idx = parseInt(e.target.dataset.idx, 10);
@@ -431,9 +476,10 @@ function saveState() {
 }
 
 document.getElementById('add-division').addEventListener('click', () => {
-    divisionsState.push({ division_id: (DIVISIONS[0]?DIVISIONS[0].id:''), raw_or_equipped: 'Raw', declared_weight_class: '' });
+    divisionsState.push({ division_id: (DIVISIONS[0]?DIVISIONS[0].id:''), declared_weight_class: '' });
     renderDivisions();
 });
+
 document.getElementById('remove-last').addEventListener('click', () => {
     divisionsState.pop();
     renderDivisions();
@@ -441,7 +487,7 @@ document.getElementById('remove-last').addEventListener('click', () => {
 
 // iniciar con 1 división por defecto (vacía)
 if (DIVISIONS.length > 0) {
-    divisionsState.push({ division_id: DIVISIONS[0].id, raw_or_equipped: 'Raw', declared_weight_class: '' });
+    divisionsState.push({ division_id: DIVISIONS[0].id, declared_weight_class: '' });
     renderDivisions();
 } else {
     document.getElementById('divisions-list').innerHTML = '<div class="alert alert-warning">No hay divisiones definidas para esta competencia. Contacta al organizador.</div>';

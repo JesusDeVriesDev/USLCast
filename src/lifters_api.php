@@ -118,11 +118,17 @@ try {
     }
     
     $stmt = $pdo->prepare("
-      SELECT cd.id, cd.raw_or_equipped, cd.declared_weight_class, d.name as division_name
+      SELECT 
+        cd.id, 
+        cd.raw_or_equipped, 
+        cd.declared_weight_class, 
+        d.name as division_name,
+        d.gender as division_gender,
+        d.type as division_type
       FROM competitor_divisions cd
       JOIN divisions d ON cd.division_id = d.id
       WHERE cd.competitor_id = :cid
-      ORDER BY d.name
+      ORDER BY d.name, cd.declared_weight_class
     ");
     $stmt->execute(['cid'=>$lifter_id]);
     $divisions = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -141,11 +147,17 @@ try {
     $raw_or_eq = $input['raw_or_equipped'];
     $weight_class = $input['declared_weight_class'];
     
-    // Check if already exists
-    $chk = $pdo->prepare("SELECT id FROM competitor_divisions WHERE competitor_id=:cid AND division_id=:did");
-    $chk->execute(['cid'=>$lifter_id,'did'=>$division_id]);
+    // CAMBIO IMPORTANTE: Ahora permitimos la MISMA división con DIFERENTE clase de peso
+    // Solo verificamos si existe la combinación EXACTA de división + clase de peso
+    $chk = $pdo->prepare("
+      SELECT id FROM competitor_divisions 
+      WHERE competitor_id=:cid 
+      AND division_id=:did 
+      AND declared_weight_class=:wc
+    ");
+    $chk->execute(['cid'=>$lifter_id,'did'=>$division_id,'wc'=>$weight_class]);
     if ($chk->fetchColumn()) {
-      throw new Exception('Esta división ya está asignada.');
+      throw new Exception('Esta combinación de división y clase de peso ya está asignada.');
     }
     
     $stmt = $pdo->prepare("INSERT INTO competitor_divisions (competitor_id, division_id, raw_or_equipped, declared_weight_class) VALUES (:cid,:did,:roe,:dwc)");
