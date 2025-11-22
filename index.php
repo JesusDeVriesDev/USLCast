@@ -1,10 +1,8 @@
 <?php
 // --- conexión simple a PostgreSQL (por si luego quieres mostrar datos reales) ---
-$host = "localhost";
-$dbname = "uslcast";
-$user = "postgres";
-$pass = "unicesmag";
-$pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $pass);
+require_once 'src/database.php';
+try { $pdo = new PDO($dsn,$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); }
+catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 ?>
 
 <!DOCTYPE html>

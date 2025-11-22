@@ -1,10 +1,8 @@
 <?php
 // --- conexión a PostgreSQL ---
-$host = "localhost";
-$dbname = "uslcast";
-$user = "postgres";
-$pass = "unicesmag";
-$pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $pass);
+require_once 'database.php';
+try { $pdo = new PDO($dsn,$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); }
+catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 
 $error = "";
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

@@ -3,9 +3,9 @@ session_start();
 $sessionUserId = $_SESSION['user_id'] ?? $_SESSION['session_user_id'] ?? null;
 if (!$sessionUserId) { header("Location: ../login.php"); exit; }
 
-$host = "localhost"; $dbname = "uslcast"; $user = "postgres"; $pass = "unicesmag";
-$pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $pass);
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+require_once 'database.php';
+try { $pdo = new PDO($dsn,$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); }
+catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 
 // check role
 $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");

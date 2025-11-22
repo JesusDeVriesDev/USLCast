@@ -2,11 +2,9 @@
 session_start();
 
 // --- conexión simple a PostgreSQL ---
-$host = "localhost";
-$dbname = "uslcast";
-$user = "postgres";
-$pass = "unicesmag";
-$pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $pass);
+require_once 'database.php';
+try { $pdo = new PDO($dsn,$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); }
+catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 
 // --- Verificar sesión y rol ---
 if (!isset($_SESSION['user_id'])) {
@@ -96,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Configuración del Meet | USLCast</title>
+  <title>Configuración del Meet — <?= $meet['name'] ?></title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
   <link rel="stylesheet" href="assets/styles.css">

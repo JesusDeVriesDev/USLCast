@@ -1,10 +1,7 @@
 <?php
 // --- conexión simple a PostgreSQL ---
-$host = "localhost";
-$dbname = "uslcast";
-$user = "postgres";
-$pass = "unicesmag";
-$pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $pass);
+require_once 'database.php';
+$pdo = new PDO($dsn, $user, $pass);
 
 $error = "";
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

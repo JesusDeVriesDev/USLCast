@@ -1,9 +1,9 @@
 <?php
 session_start();
 
-$host = "localhost"; $dbname = "uslcast"; $user = "postgres"; $pass = "unicesmag";
-$pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $pass);
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+require_once 'database.php';
+try { $pdo = new PDO($dsn,$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); }
+catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 
 $meet_id = isset($_GET['meet']) ? (int)$_GET['meet'] : (isset($_GET['id'])?(int)$_GET['id']:null);
 if (!$meet_id) die("ID de competencia no especificado.");
@@ -188,19 +188,19 @@ body{
     <div class="mt-3">
       <strong style="color:#e60000"><?=htmlspecialchars($p['name'])?></strong>
       <div class="submenu">
-        <a href="#platform-<?=$p['id']?>-run">Ejecutar</a>
-        <a href="#platform-<?=$p['id']?>-board">Tablero</a>
-        <a href="#platform-<?=$p['id']?>-display">Pantalla</a>
-        <a href="#platform-<?=$p['id']?>-ref-left">Ref - Izquierda</a>
-        <a href="#platform-<?=$p['id']?>-ref-head">Ref - Central</a>
-        <a href="#platform-<?=$p['id']?>-ref-right">Ref - Derecha</a>
+        <a href="run.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Ejecutar</a>
+        <a href="board.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Tablero</a>
+        <a href="display.php?platform=<?=$p['id']?>">Pantalla</a>
+        <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=1">Ref - Izquierda</a>
+        <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=2">Ref - Central</a>
+        <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=3">Ref - Derecha</a>
       </div>
     </div>
   <?php endforeach; ?>
 </div>
 
 <div class="main-content">
-  <div class="total-header">
+  <div class="total-header" >
     ""
   </div>
 

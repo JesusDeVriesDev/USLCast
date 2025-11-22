@@ -3,9 +3,9 @@ session_start();
 $sessionUserId = $_SESSION['user_id'] ?? $_SESSION['session_user_id'] ?? null;
 if (!$sessionUserId) { http_response_code(401); echo json_encode(['ok'=>false,'error'=>'No autorizado']); exit; }
 
-$host = "localhost"; $dbname = "uslcast"; $user = "postgres"; $pass = "unicesmag";
-$pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $pass);
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+require_once 'database.php';
+try { $pdo = new PDO($dsn,$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); }
+catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $action = $input['action'] ?? null;

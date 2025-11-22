@@ -3,8 +3,7 @@
 session_start();
 header('Content-Type: text/html; charset=utf-8');
 
-$host = "localhost"; $dbname = "uslcast"; $user = "postgres"; $pass = "unicesmag";
-$dsn = "pgsql:host=$host;dbname=$dbname";
+require_once 'database.php';
 try { $pdo = new PDO($dsn,$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); }
 catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 
@@ -15,58 +14,82 @@ function now_ts(){ return time(); }
 // --- Auth: require session + role >= 2 (referee)
 if (!isset($_SESSION['user_id'])) {
     if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'Sesión no iniciada']);
-    http_response_code(403); die("<h3>403 - Debes iniciar sesión</h3>");
+    http_response_code(403);
+    die("<h1 style='text-align:center;color:red;'>403 - Acceso denegado</h1><p style='text-align:center;'>Debes iniciar sesión para acceder a esta página.</p>");
 }
+
 $stmt = $pdo->prepare("SELECT role FROM users WHERE id = :id");
 $stmt->execute(['id'=>$_SESSION['user_id']]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
 if (!$user || $user['role'] < 2) {
-    if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'Acceso denegado']);
-    http_response_code(403); die("<h3>403 - Acceso denegado</h3>");
+    if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'Acceso denegado - rol insuficiente']);
+    http_response_code(403);
+    die("<h1 style='text-align:center;color:red;'>403 - Acceso denegado</h1><p style='text-align:center;'>Se requiere rol de árbitro o superior (rol ≥ 2) para acceder a esta página.</p>");
 }
 
-// --- meet and optional platform filter
+// --- meet and REQUIRED platform filter
 $meet_id = isset($_REQUEST['meet']) ? (int)$_REQUEST['meet'] : null;
 $platform_filter = isset($_REQUEST['platform']) && $_REQUEST['platform'] !== '' ? $_REQUEST['platform'] : null;
 
 if (!$meet_id) {
     if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'meet required']);
-    die("Use ?meet=ID");
+    die("<h3 style='color:red;text-align:center;'>ID de competencia no especificado. Use ?meet=ID&platform=ID</h3>");
+}
+if (!$platform_filter) {
+    if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'platform required']);
+    die("<h3 style='color:red;text-align:center;'>Plataforma requerida. Use ?meet=ID&platform=ID</h3>");
 }
 
 // check meet
 $sth = $pdo->prepare("SELECT * FROM meets WHERE id = :id");
 $sth->execute(['id'=>$meet_id]);
 $meet = $sth->fetch(PDO::FETCH_ASSOC);
-if (!$meet) { if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'meet not found']); die("Meet not found"); }
-$settings = json_decode($meet['settings'] ?? '{}', true);
+if (!$meet) { 
+    if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'meet not found']); 
+    die("<h3 style='color:red;text-align:center;'>Competencia no encontrada.</h3>");
+}
+
+// Get platform_id
+$platform_id = null;
+if (is_numeric($platform_filter)) {
+    $platform_id = (int)$platform_filter;
+} else {
+    $q = $pdo->prepare("SELECT id FROM platforms WHERE meet_id = :mid AND name = :name");
+    $q->execute(['mid'=>$meet_id,'name'=>$platform_filter]);
+    $platform_id = $q->fetchColumn();
+}
+if (!$platform_id) {
+    if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'platform not found']);
+    die("<h3 style='color:red;text-align:center;'>Plataforma no encontrada.</h3>");
+}
+
+$pstmt = $pdo->prepare("SELECT * FROM platforms WHERE id = :id");
+$pstmt->execute(['id'=>$platform_id]);
+$platform = $pstmt->fetch(PDO::FETCH_ASSOC);
+if (!$platform) {
+    if (isset($_GET['ajax'])) json_out(['ok'=>false,'error'=>'platform not found']);
+    die("<h3 style='color:red;text-align:center;'>Plataforma no encontrada.</h3>");
+}
+
+$settings = json_decode($platform['settings'] ?? '{}', true);
 if (!is_array($settings)) $settings = [];
+
+// Default bar and collar weights
+$bar_weight = $settings['bar_weight'] ?? 20;
+$collar_weight = $settings['collar_weight'] ?? 2.5;
 
 // ---------- AJAX endpoints ----------
 if (isset($_GET['ajax'])) {
     $action = $_GET['ajax'];
 
-    // Helper: load competitors for meet (filtered by platform if provided)
-    $load_competitors = function() use ($pdo, $meet_id, $platform_filter) {
-        $params = ['meet'=>$meet_id];
-        $wherePlatform = '';
-        if ($platform_filter !== null && $platform_filter !== '') {
-            // Try as numeric ID first
-            if (is_numeric($platform_filter)) {
-                $wherePlatform = " AND c.platform_id = :plat";
-                $params['plat'] = (int)$platform_filter;
-            } else {
-                // Try as platform name
-                $wherePlatform = " AND p.name = :platname";
-                $params['platname'] = $platform_filter;
-            }
-        }
+    // Helper: load competitors for platform
+    $load_competitors = function() use ($pdo, $meet_id, $platform_id) {
         $sql = "SELECT c.* FROM competitors c
-                LEFT JOIN platforms p ON p.id = c.platform_id
-                WHERE c.meet_id = :meet $wherePlatform
+                WHERE c.meet_id = :meet AND c.platform_id = :plat
                 ORDER BY COALESCE(c.session::int,0), COALESCE(c.flight,''), COALESCE(c.lot_number::int,0), c.name";
         $q = $pdo->prepare($sql);
-        $q->execute($params);
+        $q->execute(['meet'=>$meet_id, 'plat'=>$platform_id]);
         return $q->fetchAll(PDO::FETCH_ASSOC);
     };
 
@@ -84,30 +107,26 @@ if (isset($_GET['ajax'])) {
             $lift = $r['lift_type'];
             $no = (int)$r['attempt_number'];
             $idx[$cid][$lift][$no] = $r;
-            // ensure referee_calls decoded
             $idx[$cid][$lift][$no]['referee_calls'] = json_decode($r['referee_calls'] ?? '[]', true);
         }
         return $idx;
     };
 
-    // Build per-competitor structure with arrays for squat/bench/deadlift
+    // ========== STATE ==========
     if ($action === 'state') {
         $comps = $load_competitors();
         $comp_ids = array_map(function($c){ return $c['id']; }, $comps);
         $attempts_idx = $load_attempts_index($comp_ids);
 
-        // Build competitors array
         $competitors = [];
         foreach ($comps as $c) {
             $cid = $c['id'];
             $attempts_json = json_decode($c['attempts'] ?? '{}', true) ?: [];
-            // helper to get candidate weight for (lift,attempt_number)
+            
             $get_open = function($lift,$no) use ($attempts_idx,$cid,$attempts_json) {
-                // DB attempt overrides
                 if (isset($attempts_idx[$cid][$lift][$no])) {
                     return $attempts_idx[$cid][$lift][$no]['weight'] === null ? null : (float)$attempts_idx[$cid][$lift][$no]['weight'];
                 }
-                // JSON openings
                 $lk = strtolower($lift);
                 if (isset($attempts_json[$lk]) && isset($attempts_json[$lk][$no])) {
                     $v = $attempts_json[$lk][$no];
@@ -116,10 +135,9 @@ if (isset($_GET['ajax'])) {
                 return null;
             };
 
-            // fill arrays
-            $s = [];
-            $b = [];
-            $d = [];
+            $s = []; $b = []; $d = [];
+            
+            // Mostrar todos los intentos 1-4
             for ($i=1;$i<=4;$i++){
                 $s[] = ['exists' => isset($attempts_idx[$cid]['Squat'][$i]), 'data' => $attempts_idx[$cid]['Squat'][$i] ?? null, 'weight' => $get_open('Squat',$i), 'attempt_number'=>$i];
                 $b[] = ['exists' => isset($attempts_idx[$cid]['Bench'][$i]), 'data' => $attempts_idx[$cid]['Bench'][$i] ?? null, 'weight' => $get_open('Bench',$i), 'attempt_number'=>$i];
@@ -134,100 +152,114 @@ if (isset($_GET['ajax'])) {
                 'flight'=>$c['flight'],
                 'body_weight'=>$c['body_weight'],
                 'platform_id'=>$c['platform_id'],
-                'divisions' => [] ,
                 'squats'=>$s,
                 'bench'=>$b,
                 'deadlift'=>$d
             ];
         }
 
-        // ORDERING: Dynamic ordering based on NEXT PENDING attempt weight
-        // Group by session -> flight
-        $groups = [];
-        foreach ($competitors as $comp) {
-            $sess = $comp['session'] ?? 0;
-            $fl = $comp['flight'] ?? '';
-            $groups[$sess][$fl][] = $comp;
-        }
-        ksort($groups, SORT_NUMERIC);
-        
-        // Determine current lift phase by majority
+        // Determine current lift phase - debe completar TODOS los intentos de un lift antes de pasar al siguiente
         $phase_votes = ['Squat'=>0, 'Bench'=>0, 'Deadlift'=>0];
-        
         foreach ($competitors as $comp) {
-            // Find next pending attempt
-            foreach (['squats'=>'Squat', 'bench'=>'Bench', 'deadlift'=>'Deadlift'] as $key=>$lift) {
-                foreach ($comp[$key] as $at) {
-                    if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
-                        $phase_votes[$lift]++;
-                        break 2;
-                    }
+            // Contar intentos pendientes por cada lift
+            foreach ($comp['squats'] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $phase_votes['Squat']++;
+                }
+            }
+            foreach ($comp['bench'] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $phase_votes['Bench']++;
+                }
+            }
+            foreach ($comp['deadlift'] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $phase_votes['Deadlift']++;
                 }
             }
         }
         
-        // Determine current phase
+        // Prioridad: completar todos los Squat primero, luego Bench, luego Deadlift
         $current_lift = 'Squat';
-        if ($phase_votes['Deadlift'] > 0) $current_lift = 'Deadlift';
-        elseif ($phase_votes['Bench'] > 0) $current_lift = 'Bench';
-        
-        // For each session and flight, sort competitors by their NEXT PENDING attempt weight
-        $ordered = [];
-        foreach ($groups as $sess => $fls) {
-            ksort($fls, SORT_STRING);
-            foreach ($fls as $fl => $list) {
-                usort($list, function($a, $b) use ($current_lift) {
-                    $lift_key_map = ['Squat'=>'squats', 'Bench'=>'bench', 'Deadlift'=>'deadlift'];
-                    $key = $lift_key_map[$current_lift];
-                    
-                    // Get next PENDING attempt weight (success=null) for current lift
-                    $a_next_weight = null;
-                    $b_next_weight = null;
-                    
-                    foreach ($a[$key] as $at) {
-                        if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
-                            $a_next_weight = $at['weight'];
-                            break;
-                        }
-                    }
-                    
-                    foreach ($b[$key] as $at) {
-                        if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
-                            $b_next_weight = $at['weight'];
-                            break;
-                        }
-                    }
-                    
-                    // Sort by next attempt weight ASC (nulls last = finished lifters go to end)
-                    if ($a_next_weight === null && $b_next_weight !== null) return 1;
-                    if ($a_next_weight !== null && $b_next_weight === null) return -1;
-                    if ($a_next_weight !== null && $b_next_weight !== null) {
-                        if ($a_next_weight != $b_next_weight) return ($a_next_weight < $b_next_weight) ? -1 : 1;
-                    }
-                    
-                    // Tie-breaker: body weight asc
-                    $abw = $a['body_weight'] === null ? 999999 : (float)$a['body_weight'];
-                    $bbw = $b['body_weight'] === null ? 999999 : (float)$b['body_weight'];
-                    if ($abw != $bbw) return ($abw < $bbw) ? -1 : 1;
-                    
-                    // lot_number
-                    $al = $a['lot_number'] === null ? 999999 : (int)$a['lot_number'];
-                    $bl = $b['lot_number'] === null ? 999999 : (int)$b['lot_number'];
-                    if ($al != $bl) return ($al < $bl) ? -1 : 1;
-                    
-                    return strcmp($a['name'], $b['name']);
-                });
-                foreach ($list as $c) $ordered[] = $c;
-            }
+        if ($phase_votes['Squat'] > 0) {
+            $current_lift = 'Squat';
+        } elseif ($phase_votes['Bench'] > 0) {
+            $current_lift = 'Bench';
+        } elseif ($phase_votes['Deadlift'] > 0) {
+            $current_lift = 'Deadlift';
         }
+        
+        $lift_key_map = ['Squat'=>'squats', 'Bench'=>'bench', 'Deadlift'=>'deadlift'];
+        $key = $lift_key_map[$current_lift];
 
-        // Finally return state: ordered competitors, current_attempt, timer
+        // Sort by session -> flight -> next pending weight -> body weight -> lot
+        usort($competitors, function($a, $b) use ($key) {
+            // 1. Session ASC (primero sesión 1, luego 2, etc.)
+            $as = $a['session'] === null ? 999999 : (int)$a['session'];
+            $bs = $b['session'] === null ? 999999 : (int)$b['session'];
+            if ($as != $bs) return $as - $bs;
+            
+            // 2. Flight ASC (A, B, C... o 1, 2, 3...)
+            $af = $a['flight'] ?? '';
+            $bf = $b['flight'] ?? '';
+            if ($af !== $bf) return strcmp($af, $bf);
+            
+            // 3. Próximo intento pendiente (peso) para el lift actual
+            $a_weight = null;
+            $b_weight = null;
+            
+            foreach ($a[$key] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $a_weight = (float)$at['weight'];
+                    break;
+                }
+            }
+            foreach ($b[$key] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $b_weight = (float)$at['weight'];
+                    break;
+                }
+            }
+            
+            // Competidores sin intentos pendientes van al final
+            if ($a_weight === null && $b_weight !== null) return 1;
+            if ($a_weight !== null && $b_weight === null) return -1;
+            
+            // Ordenar por peso del próximo intento (menor peso primero)
+            if ($a_weight !== null && $b_weight !== null && abs($a_weight - $b_weight) > 0.001) {
+                return ($a_weight < $b_weight) ? -1 : 1;
+            }
+            
+            // 4. Body weight ASC (el más liviano va primero - regla oficial de desempate)
+            $abw = $a['body_weight'] === null ? 999999 : (float)$a['body_weight'];
+            $bbw = $b['body_weight'] === null ? 999999 : (float)$b['body_weight'];
+            if (abs($abw - $bbw) > 0.001) return ($abw < $bbw) ? -1 : 1;
+            
+            // 5. Lot number ASC
+            $al = $a['lot_number'] === null ? 999999 : (int)$a['lot_number'];
+            $bl = $b['lot_number'] === null ? 999999 : (int)$b['lot_number'];
+            if ($al != $bl) return $al - $bl;
+            
+            // 6. Name ASC como fallback final
+            return strcmp($a['name'], $b['name']);
+        });
+
         $current_attempt = $settings['current_attempt'] ?? null;
         $timer = $settings['timer'] ?? ['running'=>false,'started_at'=>null,'duration'=>60];
-        json_out(['ok'=>true,'meet'=>['id'=>$meet_id,'name'=>$meet['name']],'competitors'=>$ordered,'current_attempt'=>$current_attempt,'timer'=>$timer]);
+        
+        json_out([
+            'ok'=>true,
+            'meet'=>['id'=>$meet_id,'name'=>$meet['name'],'platform'=>$platform['name']],
+            'competitors'=>$competitors,
+            'current_attempt'=>$current_attempt,
+            'timer'=>$timer,
+            'current_lift'=>$current_lift,
+            'bar_weight'=>$bar_weight,
+            'collar_weight'=>$collar_weight
+        ]);
     }
 
-    // ---------- set_weight ----------
+    // ========== SET_WEIGHT ==========
     if ($action === 'set_weight' && $_SERVER['REQUEST_METHOD']==='POST') {
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $attempt_id = $data['attempt_id'] ?? null;
@@ -239,46 +271,42 @@ if (isset($_GET['ajax'])) {
         if ($attempt_id === null) json_out(['ok'=>false,'error'=>'attempt_id required']);
 
         if ((int)$attempt_id <= 0) {
-            // create attempt
             if (!$competitor_id || !$lift_type || !$attempt_number) json_out(['ok'=>false,'error'=>'missing metadata']);
             $ins = $pdo->prepare("INSERT INTO attempts (competitor_id,lift_type,attempt_number,weight,success,created_at) VALUES (:cid,:lift,:no,:w,NULL,now()) RETURNING id");
             $ins->execute(['cid'=>$competitor_id,'lift'=>$lift_type,'no'=>$attempt_number,'w'=>$weight]);
             $newid = (int)$ins->fetchColumn();
             if (($settings['current_attempt'] ?? null) == $attempt_id) {
                 $settings['current_attempt'] = $newid;
-                $pdo->prepare("UPDATE meets SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$meet_id]);
+                $pdo->prepare("UPDATE platforms SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$platform_id]);
             }
             json_out(['ok'=>true,'created_id'=>$newid]);
         } else {
-            // update existing
             $pdo->prepare("UPDATE attempts SET weight = :w WHERE id = :id")->execute(['w'=>$weight,'id'=>$attempt_id]);
             json_out(['ok'=>true]);
         }
     }
 
-    // ---------- set_current (NO auto-advance) ----------
+    // ========== SET_CURRENT ==========
     if ($action === 'set_current' && $_SERVER['REQUEST_METHOD']==='POST') {
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $attempt_id = $data['attempt_id'] ?? null;
         if ($attempt_id === null) json_out(['ok'=>false,'error'=>'attempt_id required']);
         
-        // Simply set the current attempt, do NOT advance
         $settings['current_attempt'] = $attempt_id;
         $settings['timer'] = ['running'=>false,'started_at'=>null,'duration'=>60];
-        $pdo->prepare("UPDATE meets SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$meet_id]);
+        $pdo->prepare("UPDATE platforms SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$platform_id]);
         json_out(['ok'=>true]);
     }
 
-    // ---------- mark (good/bad) with AUTO-ADVANCE ----------
+    // ========== MARK (good/bad) ==========
     if ($action === 'mark' && $_SERVER['REQUEST_METHOD']==='POST') {
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $attempt_id = $data['attempt_id'] ?? null;
-        $result = $data['result'] ?? null; // 'good' or 'bad'
+        $result = $data['result'] ?? null;
         if ($attempt_id === null || !in_array($result,['good','bad'])) json_out(['ok'=>false,'error'=>'invalid payload']);
         $success = $result === 'good' ? 1 : 0;
 
         if ((int)$attempt_id <= 0) {
-            // create row then set success
             $competitor_id = $data['competitor_id'] ?? null;
             $lift_type = $data['lift_type'] ?? null;
             $attempt_number = isset($data['attempt_number']) ? (int)$data['attempt_number'] : null;
@@ -287,20 +315,16 @@ if (isset($_GET['ajax'])) {
             $ins = $pdo->prepare("INSERT INTO attempts (competitor_id,lift_type,attempt_number,weight,success,created_at) VALUES (:cid,:lift,:no,:w,:s,now()) RETURNING id");
             $ins->execute(['cid'=>$competitor_id,'lift'=>$lift_type,'no'=>$attempt_number,'w'=>$weight,'s'=>$success]);
             $newid = (int)$ins->fetchColumn();
-            if (($settings['current_attempt'] ?? null) == $attempt_id) {
-                $settings['current_attempt'] = $newid;
-            }
         } else {
-            // update existing attempt success
             $pdo->prepare("UPDATE attempts SET success = :s WHERE id = :id")->execute(['s'=>$success,'id'=>$attempt_id]);
         }
         
-        // NOW AUTO-ADVANCE: Find next lifter with lowest pending weight
+        // AUTO-ADVANCE to next lifter with lowest weight
         $comps = $load_competitors();
         $comp_ids = array_map(function($c){ return $c['id']; }, $comps);
         $attempts_idx = $load_attempts_index($comp_ids);
         
-        // Rebuild competitors with attempts
+        // Rebuild competitors
         $competitors = [];
         foreach ($comps as $c) {
             $cid = $c['id'];
@@ -311,8 +335,7 @@ if (isset($_GET['ajax'])) {
                 }
                 $lk = strtolower($lift);
                 if (isset($attempts_json[$lk]) && isset($attempts_json[$lk][$no])) {
-                    $v = $attempts_json[$lk][$no];
-                    return $v === null ? null : (float)$v;
+                    return $attempts_json[$lk][$no] === null ? null : (float)$attempts_json[$lk][$no];
                 }
                 return null;
             };
@@ -325,116 +348,116 @@ if (isset($_GET['ajax'])) {
             }
             
             $competitors[] = [
-                'id'=>$cid,
-                'name'=>$c['name'],
-                'session'=>$c['session'],
-                'flight'=>$c['flight'],
-                'body_weight'=>$c['body_weight'],
-                'lot_number'=>$c['lot_number'],
-                'platform_id'=>$c['platform_id'],
-                'squats'=>$s,
-                'bench'=>$b,
-                'deadlift'=>$d
+                'id'=>$cid, 'name'=>$c['name'], 'session'=>$c['session'], 'flight'=>$c['flight'],
+                'body_weight'=>$c['body_weight'], 'lot_number'=>$c['lot_number'],
+                'squats'=>$s, 'bench'=>$b, 'deadlift'=>$d
             ];
         }
         
-        // Determine current lift phase
+        // Determine phase - completar todos los Squat antes de pasar a Bench
         $phase_votes = ['Squat'=>0, 'Bench'=>0, 'Deadlift'=>0];
         foreach ($competitors as $comp) {
-            foreach (['squats'=>'Squat', 'bench'=>'Bench', 'deadlift'=>'Deadlift'] as $key=>$lift) {
-                foreach ($comp[$key] as $at) {
-                    if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
-                        $phase_votes[$lift]++;
-                        break 2;
-                    }
+            // Contar intentos pendientes por cada lift
+            foreach ($comp['squats'] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $phase_votes['Squat']++;
+                }
+            }
+            foreach ($comp['bench'] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $phase_votes['Bench']++;
+                }
+            }
+            foreach ($comp['deadlift'] as $at) {
+                if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
+                    $phase_votes['Deadlift']++;
                 }
             }
         }
+        
+        // Prioridad: completar Squat -> Bench -> Deadlift
         $current_lift = 'Squat';
-        if ($phase_votes['Deadlift'] > 0) $current_lift = 'Deadlift';
-        elseif ($phase_votes['Bench'] > 0) $current_lift = 'Bench';
+        if ($phase_votes['Squat'] > 0) {
+            $current_lift = 'Squat';
+        } elseif ($phase_votes['Bench'] > 0) {
+            $current_lift = 'Bench';
+        } elseif ($phase_votes['Deadlift'] > 0) {
+            $current_lift = 'Deadlift';
+        }
         
         $lift_key_map = ['Squat'=>'squats', 'Bench'=>'bench', 'Deadlift'=>'deadlift'];
         $key = $lift_key_map[$current_lift];
         
-        // Find lifter with LOWEST pending weight in current lift
+        // Find next: session -> flight -> peso -> body weight -> lot
         $next_attempt_id = null;
-        $lowest_weight = null;
-        $best_comp = null;
+        $best = null;
         
         foreach ($competitors as $comp) {
             foreach ($comp[$key] as $at) {
                 if ($at['weight'] !== null && (!isset($at['data']) || $at['data'] === null || $at['data']['success'] === null)) {
-                    // This is a pending attempt
-                    if ($lowest_weight === null || $at['weight'] < $lowest_weight) {
-                        $lowest_weight = $at['weight'];
-                        $best_comp = $comp;
-                        $next_attempt_id = $at['data'] ? ($at['data']['id'] ?? $at['data']['attempt_id'] ?? null) : -($comp['id']*1000 + $at['attempt_number'] + ($current_lift==='Bench'?100:($current_lift==='Deadlift'?200:0)));
-                    } elseif ($at['weight'] == $lowest_weight && $best_comp) {
-                        // Tie-breaker: body weight
-                        $cur_bw = $comp['body_weight'] === null ? 999999 : (float)$comp['body_weight'];
-                        $best_bw = $best_comp['body_weight'] === null ? 999999 : (float)$best_comp['body_weight'];
-                        if ($cur_bw < $best_bw) {
-                            $best_comp = $comp;
-                            $next_attempt_id = $at['data'] ? ($at['data']['id'] ?? $at['data']['attempt_id'] ?? null) : -($comp['id']*1000 + $at['attempt_number'] + ($current_lift==='Bench'?100:($current_lift==='Deadlift'?200:0)));
+                    $candidate = [
+                        'session' => $comp['session'] === null ? 999999 : (int)$comp['session'],
+                        'flight' => $comp['flight'] ?? '',
+                        'weight' => (float)$at['weight'],
+                        'body_weight' => $comp['body_weight'] === null ? 999999 : (float)$comp['body_weight'],
+                        'lot' => $comp['lot_number'] === null ? 999999 : (int)$comp['lot_number'],
+                        'attempt_id' => $at['data'] ? ($at['data']['id'] ?? $at['data']['attempt_id']) : -($comp['id']*1000 + $at['attempt_number'] + ($current_lift==='Bench'?100:($current_lift==='Deadlift'?200:0)))
+                    ];
+                    
+                    if ($best === null) {
+                        $best = $candidate;
+                    } else {
+                        // Compare: session -> flight -> weight -> body_weight -> lot
+                        $should_replace = false;
+                        
+                        if ($candidate['session'] < $best['session']) {
+                            $should_replace = true;
+                        } elseif ($candidate['session'] == $best['session']) {
+                            $cmp_flight = strcmp($candidate['flight'], $best['flight']);
+                            if ($cmp_flight < 0) {
+                                $should_replace = true;
+                            } elseif ($cmp_flight == 0) {
+                                if ($candidate['weight'] < $best['weight']) {
+                                    $should_replace = true;
+                                } elseif (abs($candidate['weight'] - $best['weight']) < 0.001) {
+                                    if ($candidate['body_weight'] < $best['body_weight']) {
+                                        $should_replace = true;
+                                    } elseif (abs($candidate['body_weight'] - $best['body_weight']) < 0.001) {
+                                        if ($candidate['lot'] < $best['lot']) {
+                                            $should_replace = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if ($should_replace) {
+                            $best = $candidate;
                         }
                     }
-                    break; // Only check first pending attempt per lifter
+                    break;
                 }
             }
         }
         
-        if ($next_attempt_id !== null) {
-            $settings['current_attempt'] = $next_attempt_id;
+        if ($best !== null) {
+            $settings['current_attempt'] = $best['attempt_id'];
         }
         
-        $pdo->prepare("UPDATE meets SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$meet_id]);
-        json_out(['ok'=>true,'advanced'=>($next_attempt_id !== null)]);
+        $pdo->prepare("UPDATE platforms SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$platform_id]);
+        json_out(['ok'=>true,'advanced'=>($best !== null)]);
     }
 
-    // ---------- move_end ----------
-    if ($action === 'move_end' && $_SERVER['REQUEST_METHOD']==='POST') {
+    // ========== UPDATE BAR/COLLAR ==========
+    if ($action === 'update_equipment' && $_SERVER['REQUEST_METHOD']==='POST') {
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
-        $attempt_id = $data['attempt_id'] ?? null;
-        if ($attempt_id === null) json_out(['ok'=>false,'error'=>'attempt_id required']);
-        $ts = now_ts();
-        if ((int)$attempt_id > 0) {
-            $q = $pdo->prepare("SELECT referee_calls FROM attempts WHERE id = :id"); $q->execute(['id'=>$attempt_id]); $rc = $q->fetchColumn();
-            $arr = json_decode($rc ?? '[]', true); if (!is_array($arr)) $arr = [];
-            $arr[] = ['moved_to_end'=>$ts];
-            $pdo->prepare("UPDATE attempts SET referee_calls = :rc WHERE id = :id")->execute(['rc'=>json_encode($arr),'id'=>$attempt_id]);
-            json_out(['ok'=>true]);
-        } else {
-            if (!isset($settings['moved_to_end'])) $settings['moved_to_end'] = [];
-            $settings['moved_to_end'][] = ['id'=>$attempt_id,'ts'=>$ts];
-            $pdo->prepare("UPDATE meets SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$meet_id]);
-            json_out(['ok'=>true]);
-        }
+        if (isset($data['bar_weight'])) $settings['bar_weight'] = (float)$data['bar_weight'];
+        if (isset($data['collar_weight'])) $settings['collar_weight'] = (float)$data['collar_weight'];
+        $pdo->prepare("UPDATE platforms SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$platform_id]);
+        json_out(['ok'=>true]);
     }
 
-    // ---------- record ----------
-    if ($action === 'record' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        $data = json_decode(file_get_contents('php://input'), true) ?: [];
-        $attempt_id = $data['attempt_id'] ?? null; $rtype = $data['record_type'] ?? null;
-        if ($attempt_id === null || !$rtype) json_out(['ok'=>false,'error'=>'invalid payload']);
-        if ((int)$attempt_id > 0) {
-            $pdo->prepare("UPDATE attempts SET is_record=true, record_type=:rt WHERE id=:id")->execute(['rt'=>$rtype,'id'=>$attempt_id]);
-            json_out(['ok'=>true]);
-        } else {
-            $competitor_id = $data['competitor_id'] ?? null; $lift_type = $data['lift_type'] ?? null; $attempt_number = $data['attempt_number'] ?? null; $weight = $data['weight'] ?? null;
-            if (!$competitor_id || !$lift_type || !$attempt_number) json_out(['ok'=>false,'error'=>'missing metadata']);
-            $ins = $pdo->prepare("INSERT INTO attempts (competitor_id,lift_type,attempt_number,weight,success,is_record,record_type,created_at) VALUES (:cid,:lift,:no,:w,NULL,TRUE,:rt,now()) RETURNING id");
-            $ins->execute(['cid'=>$competitor_id,'lift'=>$lift_type,'no'=>$attempt_number,'w'=>$weight,'rt'=>$rtype]);
-            $newid = (int)$ins->fetchColumn();
-            if (($settings['current_attempt'] ?? null) == $attempt_id) {
-                $settings['current_attempt'] = $newid;
-                $pdo->prepare("UPDATE meets SET settings=:s WHERE id=:id")->execute(['s'=>json_encode($settings),'id'=>$meet_id]);
-            }
-            json_out(['ok'=>true,'created_id'=>$newid]);
-        }
-    }
-
-    // ---------- timer control (manual only from run.php) ----------
+    // ========== TIMER ==========
     if ($action === 'timer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $cmd = $data['cmd'] ?? null;
@@ -446,168 +469,199 @@ if (isset($_GET['ajax'])) {
         } elseif ($cmd === 'pause') {
             if (!empty($timer['running']) && !empty($timer['started_at'])) {
                 $elapsed = now_ts() - (int)$timer['started_at'];
-                $remaining = max(0, (int)$timer['duration'] - $elapsed);
-                $timer['duration'] = $remaining;
+                $timer['duration'] = max(0, (int)$timer['duration'] - $elapsed);
             }
             $timer['running'] = false; $timer['started_at'] = null;
         } elseif ($cmd === 'reset') {
-            $timer['running'] = false; $timer['started_at'] = null; $timer['duration'] = isset($data['duration']) ? (int)$data['duration'] : 60;
-        } elseif ($cmd === 'set_duration') {
-            $timer['duration'] = isset($data['duration']) ? (int)$data['duration'] : $timer['duration'];
-            if (!empty($timer['running'])) $timer['started_at'] = now_ts();
+            $timer['running'] = false; $timer['started_at'] = null;
+            $timer['duration'] = isset($data['duration']) ? (int)$data['duration'] : 60;
         }
         $settings['timer'] = $timer;
-        $pdo->prepare("UPDATE meets SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$meet_id]);
+        $pdo->prepare("UPDATE platforms SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$platform_id]);
         json_out(['ok'=>true,'timer'=>$timer]);
     }
 
-    // ---------- get_rack_height ----------
-    if ($action === 'get_rack' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    // ========== GET/UPDATE RACK ==========
+    if ($action === 'get_rack') {
         $comp_id = isset($_GET['competitor_id']) ? (int)$_GET['competitor_id'] : null;
         if (!$comp_id) json_out(['ok'=>false,'error'=>'competitor_id required']);
-        
         $q = $pdo->prepare("SELECT rack_height FROM competitors WHERE id = :id");
         $q->execute(['id'=>$comp_id]);
         $row = $q->fetch(PDO::FETCH_ASSOC);
-        if (!$row) json_out(['ok'=>false,'error'=>'competitor not found']);
-        
-        $rack = json_decode($row['rack_height'] ?? '{}', true);
-        if (!is_array($rack)) $rack = [];
-        
+        if (!$row) json_out(['ok'=>false,'error'=>'not found']);
+        $rack = json_decode($row['rack_height'] ?? '{}', true) ?: [];
         json_out(['ok'=>true,'rack'=>$rack]);
     }
 
-    // ---------- update_rack_height ----------
     if ($action === 'update_rack' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $comp_id = isset($data['competitor_id']) ? (int)$data['competitor_id'] : null;
-        $squat = $data['squat'] ?? null;
-        $bench = $data['bench'] ?? null;
-        
         if (!$comp_id) json_out(['ok'=>false,'error'=>'competitor_id required']);
-        
-        $rack = ['squat'=>$squat, 'bench'=>$bench];
-        
-        $pdo->prepare("UPDATE competitors SET rack_height = :rack::jsonb WHERE id = :id")
-            ->execute(['rack'=>json_encode($rack), 'id'=>$comp_id]);
-        
+        $rack = ['squat'=>$data['squat']??null, 'bench'=>$data['bench']??null];
+        $pdo->prepare("UPDATE competitors SET rack_height = :rack::jsonb WHERE id = :id")->execute(['rack'=>json_encode($rack), 'id'=>$comp_id]);
+        json_out(['ok'=>true]);
+    }
+
+    // ========== MOVE_END, RECORD ==========
+    if ($action === 'move_end' && $_SERVER['REQUEST_METHOD']==='POST') {
+        $data = json_decode(file_get_contents('php://input'), true) ?: [];
+        $attempt_id = $data['attempt_id'] ?? null;
+        if (!$attempt_id) json_out(['ok'=>false,'error'=>'attempt_id required']);
+        $ts = now_ts();
+        if ((int)$attempt_id > 0) {
+            $q = $pdo->prepare("SELECT referee_calls FROM attempts WHERE id = :id"); $q->execute(['id'=>$attempt_id]);
+            $arr = json_decode($q->fetchColumn() ?? '[]', true) ?: [];
+            $arr[] = ['moved_to_end'=>$ts];
+            $pdo->prepare("UPDATE attempts SET referee_calls = :rc WHERE id = :id")->execute(['rc'=>json_encode($arr),'id'=>$attempt_id]);
+        }
+        json_out(['ok'=>true]);
+    }
+
+    if ($action === 'record' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $data = json_decode(file_get_contents('php://input'), true) ?: [];
+        $attempt_id = $data['attempt_id'] ?? null;
+        $rtype = $data['record_type'] ?? null;
+        if (!$attempt_id || !$rtype) json_out(['ok'=>false,'error'=>'invalid payload']);
+        if ((int)$attempt_id > 0) {
+            $pdo->prepare("UPDATE attempts SET is_record=true, record_type=:rt WHERE id=:id")->execute(['rt'=>$rtype,'id'=>$attempt_id]);
+        }
         json_out(['ok'=>true]);
     }
 
     json_out(['ok'=>false,'error'=>'unknown action']);
 }
-
-// ------------- HTML UI (non-AJAX) -------------
 ?>
 <!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Run — <?= safe($meet['name']) ?></title>
+<title>Run — <?= safe($meet['name']) ?> — <?= safe($platform['name']) ?></title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-/* Estilo B: similar a results.php (oscuro, cajas redondeadas) */
 body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;margin:0}
-.wrap{max-width:1400px;margin:12px auto;padding:12px}
-.top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.wrap{max-width:1500px;margin:0 auto;padding:12px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .title{font-size:1.2rem;font-weight:700}
-.btn{background:#c0392b;color:#fff;padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
-.btn-ghost{background:transparent;border:1px solid #333;color:#fff;padding:6px 8px;border-radius:6px;cursor:pointer}
-.layout{display:grid;grid-template-columns:1fr 360px;gap:12px}
+.btn{background:#c0392b;color:#fff;padding:8px 12px;border-radius:6px;border:none;cursor:pointer}
+.btn:hover{background:#a5281b}
+.btn-ghost{background:transparent;border:1px solid #444;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer}
+.layout{display:grid;grid-template-columns:1fr 380px;gap:12px}
 .panel{background:#151515;border-radius:8px;padding:12px}
 .table{width:100%;border-collapse:collapse}
-.table th, .table td{padding:8px;border-bottom:1px solid #222;text-align:left;vertical-align:middle}
-.lifter-cell{width:300px}
-.box{width:100px;height:68px;border-radius:6px;background:#111;display:flex;flex-direction:column;justify-content:center;align-items:center;margin:4px;border:1px solid #222;position:relative;cursor:pointer}
-.box .w{font-weight:700}
-.box.good{background:#0b6b2b}
-.box.bad{background:#6b0b0b}
+.table th,.table td{padding:6px 8px;border-bottom:1px solid #222;text-align:center;vertical-align:middle}
+.table th{background:#1a1a1a;font-size:0.85rem}
+.lifter-cell{text-align:left!important;min-width:180px}
+.box{width:85px;height:60px;border-radius:6px;background:#1a1a1a;display:flex;flex-direction:column;justify-content:center;align-items:center;margin:2px auto;border:2px solid #333;cursor:pointer;transition:all 0.15s}
+.box:hover{border-color:#666}
+.box .w{font-weight:700;font-size:0.95rem}
+.box.good{background:#0b6b2b;border-color:#0f0}
+.box.bad{background:#6b0b0b;border-color:#f00}
+.box.current{border-color:#ffcc00;box-shadow:0 0 8px #ffcc00}
 .box.record{background:#1f78d1}
-.small{font-size:0.9rem;color:#bbb}
-.meat{position:absolute;right:6px;top:6px;cursor:pointer}
-.ref-light{display:inline-block;width:18px;height:18px;border-radius:50%;background:#3a3a3a;margin-right:6px;border:2px solid #222}
-.ref-good{background:#0b6b2b}
-.ref-bad{background:#6b0b0b}
-.popover{position:absolute;background:#121212;padding:8px;border-radius:6px;border:1px solid #333;z-index:200}
+.small{font-size:0.85rem;color:#999}
+.meat{position:absolute;right:4px;top:2px;cursor:pointer;font-size:0.8rem;opacity:0.6}
+.meat:hover{opacity:1}
+.box{position:relative}
+.ref-lights{display:flex;gap:8px;margin:8px 0}
+.ref-light{width:28px;height:28px;border-radius:50%;background:#333;border:2px solid #555}
+.ref-light.voted{background:#888}
+.ref-light.good{background:#0b6b2b;border-color:#0f0}
+.ref-light.bad{background:#6b0b0b;border-color:#f00}
+.popover{position:fixed;background:#1a1a1a;padding:8px 0;border-radius:6px;border:1px solid #444;z-index:1000;min-width:180px}
+.popover div{padding:8px 12px;cursor:pointer}
+.popover div:hover{background:#333}
+.equipment-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.equipment-row input{width:70px;padding:6px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px;text-align:center}
+.equipment-row label{font-size:0.85rem;color:#aaa}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="title">Run — <?= safe($meet['name']) ?></div>
-    <div style="margin-left:auto">
-      <button class="btn" id="select-first">Select First Lifter</button>
+    <div class="title">Run — <?= safe($meet['name']) ?> — <?= safe($platform['name']) ?></div>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn" id="select-first">Select First</button>
       <button class="btn-ghost" id="toggle-autoscroll">Autoscroll: ON</button>
     </div>
   </div>
 
   <div class="layout">
-    <div class="panel" id="left-panel">
-      <div style="overflow:auto;max-height:78vh">
+    <div class="panel">
+      <div style="overflow:auto;max-height:80vh">
         <table class="table" id="competitors-table">
           <thead>
-            <tr style="border-bottom:2px solid #222">
+            <tr>
               <th class="lifter-cell">Lifter</th>
-              <!-- 12 attempt columns: S1-S4, B1-B4, D1-D4 -->
-              <?php for($i=1;$i<=4;$i++) echo "<th>S{$i}</th>"; for($i=1;$i<=4;$i++) echo "<th>B{$i}</th>"; for($i=1;$i<=4;$i++) echo "<th>D{$i}</th>"; ?>
+              <th>S1</th><th>S2</th><th>S3</th><th>S4</th>
+              <th>B1</th><th>B2</th><th>B3</th><th>B4</th>
+              <th>D1</th><th>D2</th><th>D3</th><th>D4</th>
             </tr>
           </thead>
-          <tbody id="competitors-body">
-            <tr><td colspan="13" class="small">Cargando...</td></tr>
-          </tbody>
+          <tbody id="competitors-body"><tr><td colspan="13">Cargando...</td></tr></tbody>
         </table>
       </div>
     </div>
 
     <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <!-- Timer -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div>
-          <div class="small">Timer (control desde Run)</div>
-          <div style="font-size:2rem;font-weight:700" id="timer-display">--:--</div>
+          <div class="small">Timer</div>
+          <div style="font-size:2.5rem;font-weight:700;font-family:monospace" id="timer-display">01:00</div>
         </div>
-        <div style="text-align:right">
-          <div style="margin-bottom:8px">
-            <button class="btn" id="timer-start">Start</button>
-            <button class="btn" id="timer-pause">Pause</button>
-            <button class="btn" id="timer-reset">Reset</button>
-          </div>
-          <div>
-            <label class="small">Duration</label>
-            <input type="number" id="duration-input" value="60" style="width:80px;padding:6px;border-radius:6px;background:#111;color:#fff;border:1px solid #333">
-            <button class="btn-ghost" id="set-duration">Set</button>
-          </div>
+        <div>
+          <button class="btn" id="timer-start">▶</button>
+          <button class="btn-ghost" id="timer-pause">⏸</button>
+          <button class="btn-ghost" id="timer-reset">↺</button>
         </div>
       </div>
-      <hr style="border-color:#222;margin:12px 0">
-      <div><strong>Referee Lights</strong>
-        <div style="margin-top:8px">
-          <span class="ref-light ref-wait" id="r1"></span>
-          <span class="ref-light ref-wait" id="r2"></span>
-          <span class="ref-light ref-wait" id="r3"></span>
-          <div class="small" id="ref-summary">Sin votos</div>
+
+      <hr style="border-color:#333;margin:12px 0">
+
+      <!-- Referee Lights -->
+      <div>
+        <div class="small">Referee Lights</div>
+        <div class="ref-lights">
+          <div class="ref-light" id="r1"></div>
+          <div class="ref-light" id="r2"></div>
+          <div class="ref-light" id="r3"></div>
         </div>
+        <div class="small" id="ref-summary">Esperando votos...</div>
       </div>
-      <hr style="border-color:#222;margin:12px 0">
-      <div><strong>Rack Heights</strong>
-        <div style="margin-top:8px">
-          <div class="small mb-2" id="lifter-name-display">Selecciona un competidor</div>
-          <div style="display:flex;gap:12px;margin-bottom:8px">
-            <div style="flex:1">
-              <label class="small">Squat Rack</label>
-              <input type="text" id="squat-rack-input" style="font-size:1.2rem;font-weight:700;width:100%;padding:8px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px" placeholder="-" disabled>
-            </div>
-            <div style="flex:1">
-              <label class="small">Bench Rack</label>
-              <input type="text" id="bench-rack-input" style="font-size:1.2rem;font-weight:700;width:100%;padding:8px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px" placeholder="-" disabled>
-            </div>
+
+      <hr style="border-color:#333;margin:12px 0">
+
+      <!-- Equipment Config -->
+      <div>
+        <div class="small" style="margin-bottom:8px">Equipment (por plataforma)</div>
+        <div class="equipment-row">
+          <label>Barra:</label>
+          <input type="number" id="bar-weight" value="<?= $bar_weight ?>" step="0.5"> kg
+        </div>
+        <div class="equipment-row">
+          <label>Collarines (c/u):</label>
+          <input type="number" id="collar-weight" value="<?= $collar_weight ?>" step="0.5"> kg
+        </div>
+        <button class="btn-ghost" id="save-equipment" style="width:100%;margin-top:4px">💾 Guardar Equipment</button>
+      </div>
+
+      <hr style="border-color:#333;margin:12px 0">
+
+      <!-- Rack Heights -->
+      <div>
+        <div class="small">Rack Heights</div>
+        <div id="lifter-name-display" style="font-weight:700;margin:4px 0">--</div>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1">
+            <label class="small">Squat</label>
+            <input type="text" id="squat-rack" style="width:100%;padding:6px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px" disabled>
           </div>
-          <button class="btn btn-usl" id="save-rack-btn" style="width:100%;padding:8px" disabled>💾 Guardar Rack Heights</button>
+          <div style="flex:1">
+            <label class="small">Bench</label>
+            <input type="text" id="bench-rack" style="width:100%;padding:6px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px" disabled>
+          </div>
         </div>
-      </div>
-      <div style="margin-top:12px" class="small">
-        - Click en ⋮ para acciones por intento.<br>
-        - Auto-advance: al marcar Good/Bad avanza al siguiente peso más bajo.<br>
-        - Timer manual: no se inicia automáticamente.
+        <button class="btn-ghost" id="save-rack" style="width:100%;margin-top:8px" disabled>💾 Guardar Rack</button>
       </div>
     </div>
   </div>
@@ -615,331 +669,307 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
 
 <script>
 const MEET_ID = <?= json_encode($meet_id) ?>;
-const PLATFORM_FILTER = <?= json_encode($platform_filter) ?>;
-let state = { competitors:[], current_attempt:null, timer:{running:false,started_at:null,duration:60} };
+const PLATFORM_ID = <?= json_encode($platform_id) ?>;
+let state = {competitors:[],current_attempt:null,timer:{},bar_weight:20,collar_weight:2.5};
 let autoscroll = true;
 let poll = null;
+let lastCurrentAttempt = null;
 
-function apiGet(action){ 
-  let url = 'run.php?meet='+MEET_ID+'&ajax='+action;
-  if (PLATFORM_FILTER) url += '&platform='+encodeURIComponent(PLATFORM_FILTER);
-  return fetch(url).then(r=>r.json()); 
-}
-function api(action,payload){ 
-  let url = 'run.php?meet='+MEET_ID+'&ajax='+action;
-  if (PLATFORM_FILTER) url += '&platform='+encodeURIComponent(PLATFORM_FILTER);
-  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify(payload)}).then(r=>r.json()); 
+function api(action,payload=null){
+  const url = 'run.php?meet='+MEET_ID+'&platform='+PLATFORM_ID+'&ajax='+action;
+  if(payload===null) return fetch(url).then(r=>r.json());
+  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json());
 }
 
-// initial fetch and polling
 async function fetchState(){
-  const j = await apiGet('state');
-  if (!j.ok) { console.error(j); return; }
-  state = { competitors: j.competitors, current_attempt: j.current_attempt, timer: j.timer };
+  const j = await api('state');
+  if(!j.ok) return console.error(j);
+  state = j;
   render();
 }
-async function startPolling(){ await fetchState(); if (poll) clearInterval(poll); poll = setInterval(fetchState,1000); }
-startPolling();
 
-// render table
 function render(){
   renderTable();
   renderTimer();
-  updateRefLights();
-  updateRackHeights();
+  renderRefLights();
+  renderRack();
 }
 
 function renderTable(){
   const body = document.getElementById('competitors-body');
   body.innerHTML = '';
-  if (!state.competitors || state.competitors.length===0) { body.innerHTML = '<tr><td colspan="13" class="small">Sin competidores</td></tr>'; return; }
+  if(!state.competitors?.length){
+    body.innerHTML = '<tr><td colspan="13" class="small">Sin competidores</td></tr>';
+    return;
+  }
+  
   state.competitors.forEach(comp => {
     const tr = document.createElement('tr');
-    // lifter cell
-    const tdL = document.createElement('td'); tdL.className='lifter-cell';
-    tdL.innerHTML = `<div style="font-weight:700">${escape(comp.name)}</div><div class="small">Lot: ${escape(comp.lot_number||'-')} • Session: ${escape(comp.session||'-')} • Flight: ${escape(comp.flight||'-')}</div>`;
+    
+    // Lifter cell
+    const tdL = document.createElement('td');
+    tdL.className = 'lifter-cell';
+    tdL.innerHTML = `<div style="font-weight:700">${esc(comp.name)}</div>
+      <div class="small">Lot: ${esc(comp.lot_number||'-')} • S${esc(comp.session||'-')} • F${esc(comp.flight||'-')}</div>`;
     tr.appendChild(tdL);
-
-    // helper to render attempt boxes array
-    const renderBoxes = (arr, liftType) => {
-      arr.forEach(at => {
+    
+    // Attempts - siempre renderizar 4 intentos por lift
+    const renderAttempts = (arr, liftType) => {
+      // Asegurar que siempre hay 4 intentos (rellenar con vacíos si faltan)
+      const attempts = [];
+      for(let i = 0; i < 4; i++) {
+        attempts.push(arr[i] || {exists: false, data: null, weight: null, attempt_number: i+1});
+      }
+      
+      attempts.forEach(at => {
         const td = document.createElement('td');
-        const box = document.createElement('div'); box.className='box';
-        // mark classes if data exists
-        let weight = '';
-        let aid = null;
-        let success = null;
-        let is_record = false;
-        if (at['data']) {
-          aid = at['data'].id ?? at['data'].attempt_id ?? null;
-          weight = at['data'].weight === null ? '' : at['data'].weight;
-          success = at['data'].success;
-          is_record = at['data'].is_record;
-        } else {
-          aid = at['data'] ? (at['data'].id||at['data'].attempt_id) : (at['exists']?null:null);
-          weight = at['weight']===null ? '' : at['weight'];
-        }
-        // decide css
-        if (is_record) box.classList.add('record');
-        else if (success === true || success === 1 || success === '1') box.classList.add('good');
-        else if (success === false || success === 0 || success === '0') box.classList.add('bad');
-
-        // inner content
-        const wdiv = document.createElement('div'); wdiv.className='w'; wdiv.textContent = weight === '' ? '-' : weight + ' kg';
-        box.appendChild(wdiv);
-        const small = document.createElement('div'); small.className='small'; small.textContent = liftType + ' #' + at.attempt_number;
-        box.appendChild(small);
-
-        // meatball actions (small)
-        const meat = document.createElement('div'); meat.className='meat'; meat.textContent='⋮';
-        meat.onclick = (ev)=>{ ev.stopPropagation(); openPopover(ev, comp, at, liftType); };
-        box.appendChild(meat);
-
-        // inline edit: clicking weight opens prompt to set weight (AJAX)
-        box.onclick = async (ev) => {
-          ev.stopPropagation();
-          const newW = prompt('Peso (kg) para ' + comp.name + ' — ' + liftType + ' #' + at.attempt_number, weight);
-          if (newW === null) return;
-          // prepare payload: if DB attempt exists use id, else send metadata to create
-          let payload = { attempt_id: at.data ? (at.data.id || at.data.attempt_id) : -1, weight: newW };
-          if (!at.data) { payload.competitor_id = comp.id; payload.lift_type = liftType; payload.attempt_number = at.attempt_number; }
-          const res = await api('set_weight', payload);
-          if (!res.ok) return alert('Error guardando peso: '+(res.error||''));
-          await fetchState();
+        const box = document.createElement('div');
+        box.className = 'box';
+        
+        const aid = at.data ? (at.data.id || at.data.attempt_id) : null;
+        const weight = at.data?.weight ?? at.weight;
+        const success = at.data?.success;
+        const isRecord = at.data?.is_record;
+        
+        // Current highlight
+        if(aid && aid == state.current_attempt) box.classList.add('current');
+        
+        // Status color
+        if(isRecord) box.classList.add('record');
+        else if(success === true || success === 1) box.classList.add('good');
+        else if(success === false || success === 0) box.classList.add('bad');
+        
+        box.innerHTML = `<div class="w">${weight ? weight+'kg' : '-'}</div>
+          <div class="small">${liftType[0]}${at.attempt_number}</div>
+          <div class="meat">⋮</div>`;
+        
+        // Click to edit weight
+        box.onclick = async (e) => {
+          if(e.target.classList.contains('meat')) return;
+          const newW = prompt(`Peso para ${comp.name} - ${liftType} #${at.attempt_number}:`, weight||'');
+          if(newW === null) return;
+          const payload = {attempt_id: aid || -1, weight: newW};
+          if(!aid) Object.assign(payload, {competitor_id:comp.id, lift_type:liftType, attempt_number:at.attempt_number});
+          await api('set_weight', payload);
+          fetchState();
         };
-
+        
+        // Meatball menu
+        box.querySelector('.meat').onclick = (e) => {
+          e.stopPropagation();
+          showPopover(e, comp, at, liftType);
+        };
+        
         td.appendChild(box);
         tr.appendChild(td);
       });
     };
-
-    renderBoxes(comp.squats, 'Squat');
-    renderBoxes(comp.bench, 'Bench');
-    renderBoxes(comp.deadlift, 'Deadlift');
-
+    
+    renderAttempts(comp.squats, 'Squat');
+    renderAttempts(comp.bench, 'Bench');
+    renderAttempts(comp.deadlift, 'Deadlift');
+    
     body.appendChild(tr);
-    // autoscroll if a box inside row is current_attempt -> highlight
-    if (state.current_attempt) {
-      // find if any attempt data.id equals current_attempt
+    
+    // Autoscroll to current
+    if(autoscroll && state.current_attempt && state.current_attempt !== lastCurrentAttempt){
       let found = false;
-      ['squats','bench','deadlift'].forEach(section => {
-        comp[section].forEach(a => {
-          if (a.data && (a.data.id == state.current_attempt || a.data.attempt_id == state.current_attempt)) found = true;
+      ['squats','bench','deadlift'].forEach(s => {
+        comp[s].forEach(a => {
+          if(a.data && (a.data.id == state.current_attempt || a.data.attempt_id == state.current_attempt)) found = true;
         });
       });
-      if (found && autoscroll) { tr.scrollIntoView({behavior:'smooth',block:'center'}); tr.style.outline='3px solid #c0392b'; setTimeout(()=>tr.style.outline='',1200); }
+      if(found){
+        tr.scrollIntoView({behavior:'smooth',block:'center'});
+        lastCurrentAttempt = state.current_attempt;
+      }
     }
   });
 }
 
-// Popover menu per attempt
-function openPopover(ev, comp, at, liftType){
-  // remove existing
-  const old = document.getElementById('pop');
-  if (old) old.remove();
-  const pop = document.createElement('div'); pop.id='pop'; pop.className='popover';
+function showPopover(e, comp, at, liftType){
+  document.getElementById('pop')?.remove();
+  const pop = document.createElement('div');
+  pop.id = 'pop';
+  pop.className = 'popover';
+  pop.style.left = e.pageX + 'px';
+  pop.style.top = e.pageY + 'px';
+  
+  const aid = at.data ? (at.data.id || at.data.attempt_id) : -( comp.id*1000 + at.attempt_number + (liftType==='Bench'?100:(liftType==='Deadlift'?200:0)) );
+  
   const actions = [
-    {k:'set_current', t:'Set as Current Attempt'},
-    {k:'good', t:'Mark Good'},
-    {k:'bad', t:'Mark Bad'},
-    {k:'move', t:'Move to End of Round'},
-    {k:'rec_state', t:'State Record'},
-    {k:'rec_reg', t:'Regional Record'},
-    {k:'rec_ame', t:'American Record'},
-    {k:'rec_w', t:'World Record'}
+    {t:'✓ Set Current', fn: ()=> api('set_current',{attempt_id:aid}).then(fetchState)},
+    {t:'✅ Mark GOOD', fn: ()=> {
+      const p = {attempt_id:aid, result:'good'};
+      if(!at.data) Object.assign(p,{competitor_id:comp.id,lift_type:liftType,attempt_number:at.attempt_number,weight:at.weight});
+      api('mark',p).then(fetchState);
+    }},
+    {t:'❌ Mark BAD', fn: ()=> {
+      const p = {attempt_id:aid, result:'bad'};
+      if(!at.data) Object.assign(p,{competitor_id:comp.id,lift_type:liftType,attempt_number:at.attempt_number,weight:at.weight});
+      api('mark',p).then(fetchState);
+    }},
+    {t:'🔚 Move to End', fn: ()=> api('move_end',{attempt_id:aid}).then(fetchState)},
+    {t:'🏆 State Record', fn: ()=> api('record',{attempt_id:aid,record_type:'State'}).then(fetchState)},
+    {t:'🏆 National Record', fn: ()=> api('record',{attempt_id:aid,record_type:'National'}).then(fetchState)},
+    {t:'🏆 World Record', fn: ()=> api('record',{attempt_id:aid,record_type:'World'}).then(fetchState)},
   ];
-  actions.forEach(a=>{
-    const d = document.createElement('div'); d.style.padding='6px 8px'; d.style.cursor='pointer'; d.textContent = a.t;
-    d.onclick = async ()=>{
-      pop.remove();
-      const attempt_id = at.data ? (at.data.id || at.data.attempt_id) : ( - (comp.id*1000 + at.attempt_number + (liftType==='Bench'?100:(liftType==='Deadlift'?200:0)) ) );
-      if (a.k === 'set_current') {
-        await api('set_current',{attempt_id});
-        await fetchState();
-      } else if (a.k === 'good' || a.k === 'bad') {
-        // payload include metadata if generated
-        const payload = { attempt_id, result: a.k === 'good' ? 'good' : 'bad' };
-        if (!at.data) { payload.competitor_id = comp.id; payload.lift_type = liftType; payload.attempt_number = at.attempt_number; payload.weight = at.weight; }
-        const res = await api('mark', payload);
-        if (!res.ok) return alert('Error: '+(res.error||''));
-        await fetchState();
-      } else if (a.k === 'move') {
-        if (!confirm('Mover al final de la misma ronda?')) return;
-        await api('move_end',{attempt_id});
-        await fetchState();
-      } else if (a.k.startsWith('rec')) {
-        const map = {'rec_state':'State','rec_reg':'Regional','rec_ame':'American','rec_w':'World'};
-        const rtype = map[a.k];
-        const payload = { attempt_id, record_type: rtype };
-        if (!at.data) { payload.competitor_id = comp.id; payload.lift_type = liftType; payload.attempt_number = at.attempt_number; payload.weight = at.weight; }
-        const res = await api('record', payload);
-        if (!res.ok) alert('Error marcando record');
-        await fetchState();
-      }
-    };
+  
+  actions.forEach(a => {
+    const d = document.createElement('div');
+    d.textContent = a.t;
+    d.onclick = () => { pop.remove(); a.fn(); };
     pop.appendChild(d);
   });
+  
   document.body.appendChild(pop);
-  pop.style.left = ev.pageX + 'px'; pop.style.top = ev.pageY + 'px';
-  window.addEventListener('click', ()=>{ const p=document.getElementById('pop'); if(p) p.remove(); }, {once:true});
+  setTimeout(() => document.addEventListener('click', () => pop.remove(), {once:true}), 10);
 }
 
-// Timer UI
 function renderTimer(){
-  const el = document.getElementById('timer-display');
-  const t = state.timer || {running:false,started_at:null,duration:60};
-  let rem = t.duration;
-  if (t.running && t.started_at) {
-    const now = Math.floor(Date.now()/1000); const elapsed = now - t.started_at; rem = Math.max(0, t.duration - elapsed);
+  const t = state.timer || {duration:60};
+  let rem = t.duration || 60;
+  if(t.running && t.started_at){
+    rem = Math.max(0, t.duration - (Math.floor(Date.now()/1000) - t.started_at));
   }
-  const mm = Math.floor(rem/60).toString().padStart(2,'0'); const ss = (rem%60).toString().padStart(2,'0');
-  el.textContent = mm + ':' + ss;
+  const mm = String(Math.floor(rem/60)).padStart(2,'0');
+  const ss = String(rem%60).padStart(2,'0');
+  document.getElementById('timer-display').textContent = mm+':'+ss;
+  document.getElementById('timer-display').style.color = rem <= 10 ? '#f00' : (rem <= 30 ? '#ff0' : '#fff');
 }
 
-// Ref lights (summary uses current_attempt's referee_calls if possible)
-function updateRefLights(){
-  const r1 = document.getElementById('r1'), r2 = document.getElementById('r2'), r3 = document.getElementById('r3'), rs = document.getElementById('ref-summary');
-  [r1,r2,r3].forEach(x=>x.className='ref-light ref-wait');
-  if (!state.current_attempt) { rs.textContent='Sin votos'; return; }
-  // find attempt
+function renderRefLights(){
+  const els = [document.getElementById('r1'),document.getElementById('r2'),document.getElementById('r3')];
+  els.forEach(el => el.className = 'ref-light');
+  
+  if(!state.current_attempt){
+    document.getElementById('ref-summary').textContent = 'Sin intento activo';
+    return;
+  }
+  
+  // Find current attempt's referee_calls
   let calls = [];
-  state.competitors.forEach(comp=>{
-    ['squats','bench','deadlift'].forEach(sec=>{
-      comp[sec].forEach(a=>{
-        if (a.data && (a.data.id == state.current_attempt || a.data.attempt_id == state.current_attempt)) {
+  state.competitors.forEach(c => {
+    ['squats','bench','deadlift'].forEach(s => {
+      c[s].forEach(a => {
+        if(a.data && (a.data.id == state.current_attempt || a.data.attempt_id == state.current_attempt)){
           calls = a.data.referee_calls || [];
         }
       });
     });
   });
-  if (calls.length===0) { rs.textContent='Sin votos'; return; }
-  calls.forEach((c,i)=>{ const el = document.getElementById('r'+(i+1)); if(!el) return; el.className = c.call==='good' ? 'ref-light ref-good' : 'ref-light ref-bad'; });
-  rs.textContent = calls.map(c=>'Ref '+(c.referee||'?')+': '+c.call).join(' • ');
-}
-
-// Rack Heights - show rack info for current lifter
-async function updateRackHeights(){
-  const squatInput = document.getElementById('squat-rack-input');
-  const benchInput = document.getElementById('bench-rack-input');
-  const lifterDisplay = document.getElementById('lifter-name-display');
-  const saveBtn = document.getElementById('save-rack-btn');
   
-  if (!state.current_attempt) {
-    squatInput.value = '';
-    benchInput.value = '';
-    squatInput.disabled = true;
-    benchInput.disabled = true;
-    saveBtn.disabled = true;
-    lifterDisplay.textContent = 'Selecciona un competidor';
-    return;
-  }
+  const allVoted = calls.length >= 3;
   
-  // Find current lifter
-  let currentComp = null;
-  state.competitors.forEach(comp=>{
-    ['squats','bench','deadlift'].forEach(sec=>{
-      comp[sec].forEach(a=>{
-        if (a.data && (a.data.id == state.current_attempt || a.data.attempt_id == state.current_attempt)) {
-          currentComp = comp;
-        }
-      });
+  if(allVoted){
+    // Reveal all votes
+    calls.forEach(c => {
+      const el = document.getElementById('r'+c.referee);
+      if(el) el.classList.add(c.call);
     });
-  });
-  
-  if (!currentComp) {
-    squatInput.value = '';
-    benchInput.value = '';
-    squatInput.disabled = true;
-    benchInput.disabled = true;
-    saveBtn.disabled = true;
-    lifterDisplay.textContent = 'Selecciona un competidor';
-    return;
-  }
-  
-  lifterDisplay.textContent = currentComp.name;
-  squatInput.disabled = false;
-  benchInput.disabled = false;
-  saveBtn.disabled = false;
-  
-  // Fetch rack heights from server
-  try {
-    const res = await apiGet('get_rack&competitor_id=' + currentComp.id);
-    if (res.ok && res.rack) {
-      squatInput.value = res.rack.squat || '';
-      benchInput.value = res.rack.bench || '';
-    } else {
-      squatInput.value = '';
-      benchInput.value = '';
-    }
-  } catch(e) {
-    console.error('Error fetching rack heights:', e);
-    squatInput.value = '';
-    benchInput.value = '';
-  }
-}
-
-// Save rack heights
-document.getElementById('save-rack-btn').addEventListener('click', async ()=>{
-  if (!state.current_attempt) return;
-  
-  // Find current lifter
-  let currentComp = null;
-  state.competitors.forEach(comp=>{
-    ['squats','bench','deadlift'].forEach(sec=>{
-      comp[sec].forEach(a=>{
-        if (a.data && (a.data.id == state.current_attempt || a.data.attempt_id == state.current_attempt)) {
-          currentComp = comp;
-        }
-      });
-    });
-  });
-  
-  if (!currentComp) return;
-  
-  const squatInput = document.getElementById('squat-rack-input');
-  const benchInput = document.getElementById('bench-rack-input');
-  
-  const res = await api('update_rack', {
-    competitor_id: currentComp.id,
-    squat: squatInput.value,
-    bench: benchInput.value
-  });
-  
-  if (res.ok) {
-    const saveBtn = document.getElementById('save-rack-btn');
-    saveBtn.textContent = '✓ Guardado';
-    setTimeout(()=>saveBtn.textContent='💾 Guardar Rack Heights', 1000);
+    const goods = calls.filter(c => c.call === 'good').length;
+    document.getElementById('ref-summary').textContent = goods >= 2 ? '✅ GOOD LIFT' : '❌ NO LIFT';
   } else {
-    alert('Error guardando rack heights: ' + (res.error || ''));
+    // Show who has voted (gray) but not their vote
+    calls.forEach(c => {
+      const el = document.getElementById('r'+c.referee);
+      if(el) el.classList.add('voted');
+    });
+    document.getElementById('ref-summary').textContent = `${calls.length}/3 votos`;
   }
-});
+}
 
-// utilities
-function escape(s){ return s===null||s===undefined ? '' : String(s); }
-
-// select first lifter (first competitor first non-empty attempt in order)
-document.getElementById('select-first').addEventListener('click', async ()=>{
-  await fetchState();
-  if (!state.competitors || state.competitors.length===0) return alert('No hay competidores');
-  // find first attempt that has weight or exists (prefer S1 then B1 then D1?) — per spec pick first in the sequence (Squat1 first)
-  for (const comp of state.competitors) {
-    const a = comp.squats[0];
-    const attempt_id = a.data ? (a.data.id||a.data.attempt_id) : ( - (comp.id*1000 + 1) );
-    await api('set_current',{attempt_id});
-    await fetchState();
+function renderRack(){
+  const display = document.getElementById('lifter-name-display');
+  const sqInput = document.getElementById('squat-rack');
+  const bnInput = document.getElementById('bench-rack');
+  const saveBtn = document.getElementById('save-rack');
+  
+  if(!state.current_attempt){
+    display.textContent = '--';
+    sqInput.value = ''; bnInput.value = '';
+    sqInput.disabled = bnInput.disabled = saveBtn.disabled = true;
     return;
   }
-});
+  
+  // Find current lifter
+  let curr = null;
+  state.competitors.forEach(c => {
+    ['squats','bench','deadlift'].forEach(s => {
+      c[s].forEach(a => {
+        if(a.data && (a.data.id == state.current_attempt || a.data.attempt_id == state.current_attempt)) curr = c;
+      });
+    });
+  });
+  
+  if(!curr){
+    display.textContent = '--';
+    sqInput.disabled = bnInput.disabled = saveBtn.disabled = true;
+    return;
+  }
+  
+  display.textContent = curr.name;
+  sqInput.disabled = bnInput.disabled = saveBtn.disabled = false;
+  
+  // Fetch rack
+  api('get_rack&competitor_id='+curr.id).then(r => {
+    if(r.ok && r.rack){
+      sqInput.value = r.rack.squat || '';
+      bnInput.value = r.rack.bench || '';
+    }
+  });
+}
 
-// autoscroll toggle
-document.getElementById('toggle-autoscroll').addEventListener('click', ()=>{ autoscroll = !autoscroll; document.getElementById('toggle-autoscroll').textContent = 'Autoscroll: ' + (autoscroll ? 'ON' : 'OFF'); });
+// Event listeners
+document.getElementById('timer-start').onclick = () => api('timer',{cmd:'start',duration:60}).then(fetchState);
+document.getElementById('timer-pause').onclick = () => api('timer',{cmd:'pause'}).then(fetchState);
+document.getElementById('timer-reset').onclick = () => api('timer',{cmd:'reset',duration:60}).then(fetchState);
 
-// timer buttons
-document.getElementById('timer-start').addEventListener('click', async ()=>{ const dur = parseInt(document.getElementById('duration-input').value)||60; await api('timer',{cmd:'start',duration:dur}); await fetchState(); });
-document.getElementById('timer-pause').addEventListener('click', async ()=>{ await api('timer',{cmd:'pause'}); await fetchState(); });
-document.getElementById('timer-reset').addEventListener('click', async ()=>{ const dur = parseInt(document.getElementById('duration-input').value)||60; await api('timer',{cmd:'reset',duration:dur}); await fetchState(); });
-document.getElementById('set-duration').addEventListener('click', async ()=>{ const dur = parseInt(document.getElementById('duration-input').value)||60; await api('timer',{cmd:'set_duration',duration:dur}); await fetchState(); });
+document.getElementById('save-equipment').onclick = async () => {
+  const bar = parseFloat(document.getElementById('bar-weight').value) || 20;
+  const collar = parseFloat(document.getElementById('collar-weight').value) || 2.5;
+  await api('update_equipment', {bar_weight:bar, collar_weight:collar});
+  alert('Equipment guardado');
+};
 
+document.getElementById('save-rack').onclick = async () => {
+  let curr = null;
+  state.competitors.forEach(c => {
+    ['squats','bench','deadlift'].forEach(s => {
+      c[s].forEach(a => {
+        if(a.data && (a.data.id == state.current_attempt)) curr = c;
+      });
+    });
+  });
+  if(!curr) return;
+  await api('update_rack', {
+    competitor_id: curr.id,
+    squat: document.getElementById('squat-rack').value,
+    bench: document.getElementById('bench-rack').value
+  });
+  alert('Rack guardado');
+};
+
+document.getElementById('select-first').onclick = async () => {
+  await fetchState();
+  if(!state.competitors?.length) return alert('Sin competidores');
+  const comp = state.competitors[0];
+  const at = comp.squats[0];
+  const aid = at.data ? at.data.id : -(comp.id*1000 + 1);
+  await api('set_current',{attempt_id:aid});
+  fetchState();
+};
+
+document.getElementById('toggle-autoscroll').onclick = () => {
+  autoscroll = !autoscroll;
+  document.getElementById('toggle-autoscroll').textContent = 'Autoscroll: ' + (autoscroll ? 'ON' : 'OFF');
+};
+
+function esc(s){ return s == null ? '' : String(s); }
+
+// Start polling
+fetchState();
+poll = setInterval(fetchState, 1000);
 </script>
 </body>
 </html>
