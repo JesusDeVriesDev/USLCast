@@ -197,7 +197,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'call' && $_SERVER['REQUEST_METHOD
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Referee <?= $referee_num ?> — <?= htmlspecialchars($platform['name']) ?></title>
+<title>Juéz <?= $referee_num ?> — <?= htmlspecialchars($meet['name']) ?> — <?= htmlspecialchars($platform['name']) ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
 * {
@@ -226,7 +226,7 @@ body {
 
 .header h1 {
     font-size: 1.4rem;
-    color: #ffcc00;
+    color: #ff0000ff;
 }
 
 .header .sub {
@@ -263,7 +263,7 @@ body {
 .weight {
     font-size: 3.5rem;
     font-weight: 700;
-    color: #ffcc00;
+    color: #ff0000ff;
     margin: 20px 0;
     text-align: center;
 }
@@ -309,7 +309,7 @@ body {
     left: -6px;
     right: -6px;
     bottom: -6px;
-    border: 3px solid #ffcc00;
+    border: 3px solid #787878ff;
     border-radius: 50%;
 }
 
@@ -392,8 +392,8 @@ body {
 <body>
 
 <div class="header">
-  <h1>ÁRBITRO <?= $referee_num ?></h1>
-  <div class="sub"><?= htmlspecialchars($platform['name']) ?> — <?= htmlspecialchars($meet['name']) ?></div>
+  <h1>Juéz <?= $referee_num ?></h1>
+  <div class="sub"><?= htmlspecialchars($meet['name']) ?> — Plataforma: <?= htmlspecialchars($platform['name']) ?></div>
 </div>
 
 <div class="card">
@@ -410,8 +410,8 @@ body {
 </div>
 
 <div class="buttons">
-  <button class="btn btn-good" id="btn-good">✓ GOOD</button>
-  <button class="btn btn-bad" id="btn-bad">✗ BAD</button>
+  <button class="btn btn-good" id="btn-good">Válido</button>
+  <button class="btn btn-bad" id="btn-bad">Nulo</button>
 </div>
 
 <div class="status" id="status">Toca un botón para votar</div>
@@ -439,7 +439,7 @@ async function poll(){
       myVote = null;
       document.getElementById('btn-good').disabled = false;
       document.getElementById('btn-bad').disabled = false;
-      document.getElementById('status').textContent = 'Toca un botón para votar';
+      document.getElementById('status').textContent = '© 2025 USLCast';
       document.getElementById('status').className = 'status';
     }
     
@@ -486,7 +486,7 @@ function updateLights(calls) {
     
     const goods = calls.filter(c => c.call === 'good').length;
     const resultEl = document.getElementById('result');
-    resultEl.textContent = goods >= 2 ? '✅ GOOD LIFT!' : '❌ NO LIFT';
+    resultEl.textContent = goods >= 2 ? '¡Intento válido!' : '¡Intento nulo!';
     resultEl.style.color = goods >= 2 ? '#0f0' : '#f00';
     
   } else {
@@ -543,7 +543,7 @@ async function sendCall(type) {
     }
     
     myVote = type;
-    statusEl.textContent = '✓ Voto registrado: ' + type.toUpperCase();
+    statusEl.textContent = 'Voto registrado: ' + type.toUpperCase();
     statusEl.className = 'status success';
     
     // Refresh immediately

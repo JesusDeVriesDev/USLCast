@@ -10,7 +10,7 @@ catch(Exception $e){ die("DB error: ".$e->getMessage()); }
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>USLCast | Powerlifting Competitions</title>
+    <title>Inicio | USLCast</title>
 
     <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -34,7 +34,6 @@ catch(Exception $e){ die("DB error: ".$e->getMessage()); }
       <ul class="navbar-nav ms-auto">
         <li class="nav-item"><a class="nav-link" href="src/login.php">Login</a></li>
         <li class="nav-item"><a class="nav-link" href="src/register.php">Registro</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Docs</a></li>
       </ul>
     </div>
   </div>

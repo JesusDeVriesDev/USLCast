@@ -17,7 +17,7 @@ if ($action === 'list' && isset($_GET['meet_id'])) {
 if ($action === 'delete' && isset($_GET['id'])) {
     $stmt = $pdo->prepare("DELETE FROM platforms WHERE id = :id");
     $stmt->execute(['id' => $_GET['id']]);
-    echo json_encode(['message' => '✅ Plataforma eliminada.']);
+    echo json_encode(['message' => 'Plataforma eliminada.']);
     exit;
 }
 
@@ -29,7 +29,7 @@ if ($action === 'get_plates' && isset($_GET['platform_id'])) {
     $data = $stmt->fetchColumn();
 
     if ($data === false) {
-        echo "<div class='alert alert-danger'>❌ Plataforma no encontrada.</div>";
+        echo "<div class='alert alert-danger'>Plataforma no encontrada.</div>";
         exit;
     }
 
@@ -71,7 +71,7 @@ if (isset($data['meet_id'], $data['platforms'])) {
             $stmt->execute(['n' => $p['name'], 'id' => $p['id']]);
         }
     }
-    echo json_encode(['message' => '✅ Plataformas guardadas correctamente.']);
+    echo json_encode(['message' => 'Plataformas guardadas correctamente.']);
     exit;
 }
 
@@ -81,8 +81,8 @@ if (isset($data['platform_id'], $data['plate_colors'])) {
         'c' => json_encode($data['plate_colors']),
         'id' => $data['platform_id']
     ]);
-    echo json_encode(['message' => '✅ Configuración de discos guardada.']);
+    echo json_encode(['message' => 'Configuración de discos guardada.']);
     exit;
 }
 
-echo json_encode(['message' => '❌ Acción no válida.']);
+echo json_encode(['message' => 'Acción no válida.']);

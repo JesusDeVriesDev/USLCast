@@ -183,6 +183,7 @@ body{
   <a href="liveFeed.php?meet=<?=$meet_id?>">Feed en Vivo</a>
   <a href="results.php?meet=<?=$meet_id?>">Resultados</a>
   <a href="roster.php?meet=<?=$meet_id?>" class="active">Lista de Orden</a>
+  <a href="stats.php?meet=<?=$meet_id?>">Estadísticas</a>
   
   <?php foreach($platforms as $p): ?>
     <div class="mt-3">

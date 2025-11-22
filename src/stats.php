@@ -23,6 +23,10 @@ $stmt->execute(['id'=>$meet_id,'org'=>$sessionUserId]);
 $meet = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$meet) die("Competencia no encontrada o no te pertenece.");
 
+$stmt = $pdo->prepare("SELECT * FROM platforms WHERE meet_id = :mid ORDER BY name ASC");
+$stmt->execute(['mid'=>$meet_id]);
+$platforms = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // Get platforms with sessions
 $stmt = $pdo->prepare("
   SELECT DISTINCT p.id, p.name, c.session
@@ -67,6 +71,7 @@ function getStats($pdo, $meet_id, $platform_id, $session) {
   ");
   $stmt->execute(['mid'=>$meet_id,'pid'=>$platform_id,'sess'=>$session]);
   $attempts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
   
   // Calculate statistics
   $stats = [
@@ -197,30 +202,82 @@ body{background:#000;color:#fff}
   margin-top:1rem;
   margin-bottom:0.5rem;
 }
+.sidebar{
+  position:fixed;
+  left:-250px;
+  top:0;
+  width:250px;
+  height:100vh;
+  background:#0a0a0a;
+  border-right:2px solid #e60000;
+  transition:left 0.3s;
+  z-index:1000;
+  overflow-y:auto;
+  padding:1rem;
+}
+.sidebar.open{left:0}
+.sidebar-toggle{
+  position:fixed;
+  top:1rem;
+  left:1rem;
+  z-index:1001;
+  background:#e60000;
+  color:#fff;
+  border:none;
+  padding:0.5rem 1rem;
+  border-radius:0.25rem;
+  cursor:pointer;
+  font-size:1.2rem;
+}
+.sidebar h5{
+  color:#e60000;
+  border-bottom:2px solid #e60000;
+  padding-bottom:0.5rem;
+  margin-bottom:1rem;
+  font-size:1rem;
+}
+.sidebar a{
+  color:#fff;
+  text-decoration:none;
+  display:block;
+  padding:0.5rem;
+  border-radius:0.25rem;
+  margin-bottom:0.25rem;
+  font-size:0.9rem;
+}
+.sidebar a:hover,.sidebar a.active{background:#e60000}
+.sidebar .submenu{padding-left:1rem}
+
 </style>
 </head>
 
 <body>
 
-<!-- NAVBAR -->
-<nav class="navbar navbar-expand-lg navbar-dark">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="#">USLCast</a>
-    <div class="collapse navbar-collapse">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item"><a class="nav-link" href="../index.php">Inicio</a></li>
-        <li class="nav-item"><a class="nav-link" href="dashboard.php">Panel</a></li>
-        <li class="nav-item"><a class="nav-link" href="setup.php?id=<?= $meet_id ?>">Configuración</a></li>
-        <li class="nav-item"><a class="nav-link" href="registration.php?meet=<?= $meet_id ?>">Registro</a></li>
-        <li class="nav-item"><a class="nav-link" href="divisions.php?id=<?= $meet_id ?>">Divisiones</a></li>
-        <li class="nav-item"><a class="nav-link" href="lifters.php?id=<?= $meet_id ?>">Lifters</a></li>
-        <li class="nav-item"><a class="nav-link" href="logout.php">Salir</a></li>
-      </ul>
-    </div>
-  </div>
-</nav>
+<button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
 
-<div class="container py-4 text-light">
+<div class="sidebar" id="sidebar">
+  <h5><?=htmlspecialchars($meet['name'])?></h5>
+  <a href="liveFeed.php?meet=<?=$meet_id?>">Feed en Vivo</a>
+  <a href="results.php?meet=<?=$meet_id?>">Resultados</a>
+  <a href="roster.php?meet=<?=$meet_id?>">Lista de Orden</a>
+  <a href="stats.php?meet=<?=$meet_id?>" class="active">Estadísticas</a>
+
+  <?php foreach($platforms as $p): ?>
+    <div class="mt-3">
+      <strong style="color:#e60000"><?=htmlspecialchars($p['name'])?></strong>
+      <div class="submenu">
+        <a href="run.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Ejecutar</a>
+        <a href="board.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Tablero</a>
+        <a href="display.php?platform=<?=$p['id']?>">Pantalla</a>
+        <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=1">Ref - Izquierda</a>
+        <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=2">Ref - Central</a>
+        <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=3">Ref - Derecha</a>
+      </div>
+    </div>
+  <?php endforeach; ?>
+</div>
+
+<div style="margin-left:1rem; padding:1rem;">
   <h2 class="text-danger mb-4 fw-bold">Estadísticas — <?=htmlspecialchars($meet['name'])?></h2>
 
   <?php if (empty($sessions)): ?>
@@ -362,6 +419,20 @@ body{background:#000;color:#fff}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+document.addEventListener('click', function(e) {
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.querySelector('.sidebar-toggle');
+  
+  if (!sidebar.contains(e.target) && !toggle.contains(e.target)) {
+    sidebar.classList.remove('open');
+  }
+});
+</script>
 
 <footer class="mt-5 text-center text-secondary">© 2025 USLCast</footer>
 

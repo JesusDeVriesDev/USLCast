@@ -221,7 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
             $extra = max(0, $num_divs - 1) * (float)($meet['additional_division_fee'] ?? 0);
             $total_cost = $base + $extra;
 
-            $success = "Registro completado. ID Competidor: $competitor_id. Total a pagar: $total_cost";
+            $success = "Registro completado. ID del Competidor: $competitor_id. Total a pagar: $total_cost, PROXIMAMENTE";
         } catch (Exception $e) {
             $pdo->rollBack();
             $errors[] = "Ocurrió un error guardando la inscripción: " . $e->getMessage();
@@ -234,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Registro - <?= htmlspecialchars($meet['name']) ?></title>
+  <title>Registro — <?= htmlspecialchars($meet['name']) ?></title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
   <link rel="stylesheet" href="assets/styles.css">
@@ -265,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_open) {
 </nav>
 
 <div class="container py-5 text-light">
-  <h2 class="text-danger mb-4 fw-bold">Registro en línea — <?= htmlspecialchars($meet['name']) ?></h2>
+  <h2 class="text-danger mb-4 fw-bold">Registro — <?= htmlspecialchars($meet['name']) ?></h2>
 
   <?php if ($not_open): ?>
     <div class="alert alert-warning">Las inscripciones para esta competencia no están abiertas.</div>

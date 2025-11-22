@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Mostrar mensaje si viene de redirección
 if (isset($_GET['success'])) {
-    $success = "✅ Competencia creada exitosamente.";
+    $success = "Competencia creada exitosamente.";
 }
 ?>
 

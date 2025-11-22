@@ -95,7 +95,7 @@ $lifters = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Levantadores — <?=htmlspecialchars($meet['name'])?></title>
+<title>Lifters — <?=htmlspecialchars($meet['name'])?></title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
 <style>
@@ -145,7 +145,7 @@ body{background:#000;color:#fff}
   <div class="mb-3 d-flex gap-2">
     <button class="btn btn-usl" id="btn-export">Exportar Levantadores</button>
     <button class="btn btn-secondary" id="btn-generate-lots">Generar Números de Lote</button>
-    <button class="btn btn-secondary" onclick="window.print()">🖨️ Imprimir</button>
+    <button class="btn btn-secondary" onclick="window.print()">Imprimir</button>
   </div>
 
   <div class="table-responsive">
@@ -161,8 +161,8 @@ body{background:#000;color:#fff}
           <th data-sort="dob">Fecha Nac.<span class="sort-arrow"></span></th>
           <th data-sort="gender">Género<span class="sort-arrow"></span></th>
           <th>Peso Corporal</th>
-          <th>Altura Squat</th>
-          <th>Altura Bench</th>
+          <th>Rack Sentadilla</th>
+          <th>Rack Press Banca</th>
           <th>Divisiones</th>
           <th>Acciones</th>
         </tr>
@@ -196,11 +196,11 @@ body{background:#000;color:#fff}
           <td><input type="text" class="field-squat-height" value="<?=$rack['squat']??''?>" placeholder="ej: 5"></td>
           <td><input type="text" class="field-bench-height" value="<?=$rack['bench']??''?>" placeholder="ej: 3"></td>
           <td>
-            <button class="btn btn-sm btn-info btn-manage-divisions" data-id="<?=$l['id']?>">⚙️ Gestionar</button>
+            <button class="btn btn-sm btn-info btn-manage-divisions" data-id="<?=$l['id']?>">Gestionar</button>
           </td>
           <td>
-            <button class="btn btn-sm btn-success btn-save">💾</button>
-            <button class="btn btn-sm btn-danger btn-delete-lifter">🗑</button>
+            <button class="btn btn-sm btn-success btn-save">Guardar</button>
+            <button class="btn btn-sm btn-danger btn-delete-lifter">Borrar</button>
           </td>
         </tr>
         <?php endforeach; ?>
@@ -379,7 +379,7 @@ document.querySelectorAll('.btn-save').forEach(btn=>{
     if(!j.ok) alert('Error: '+j.error);
     else {
       e.target.textContent = '✓';
-      setTimeout(()=>e.target.textContent='💾',800);
+      setTimeout(()=>e.target.textContent='Guardar',800);
     }
   });
 });

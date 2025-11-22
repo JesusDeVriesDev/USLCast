@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'show_link' => $show_link
         ]);
 
-        $success = "✅ Configuración actualizada correctamente.";
+        $success = "Configuración actualizada correctamente.";
     } catch (PDOException $e) {
         $error = "Ocurrió un error al guardar los cambios. Intenta nuevamente.";
     }
@@ -267,7 +267,7 @@ document.getElementById("save-platforms").addEventListener("click", () => {
             div.classList.add("d-flex", "align-items-center", "mb-2");
             div.innerHTML = `
                 <input type="text" class="form-control bg-dark text-light me-2 platform-name" data-id="${p.id}" value="${p.name}">
-                <button class="btn btn-sm btn-outline-light me-2 config-platform" data-id="${p.id}">⚙️ Configurar discos</button>
+                <button class="btn btn-sm btn-outline-light me-2 config-platform" data-id="${p.id}">Configurar discos</button>
                 <button class="btn btn-danger btn-sm delete-platform" data-id="${p.id}">🗑</button>
             `;
             listDiv.appendChild(div);

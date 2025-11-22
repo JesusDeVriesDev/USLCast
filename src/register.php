@@ -63,8 +63,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="collapse navbar-collapse" id="navbarNav">
       <ul class="navbar-nav ms-auto">
-        <li class="nav-item"><a class="nav-link" href="#">Demo</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Docs</a></li>
         <li class="nav-item"><a class="nav-link" href="create_meet.php">Create Meet</a></li>
       </ul>
     </div>

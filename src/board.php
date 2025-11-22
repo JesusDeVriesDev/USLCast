@@ -1,5 +1,5 @@
 <?php
-// board.php - Display page for audience
+
 session_start();
 
 require_once 'database.php';
@@ -249,7 +249,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'state') {
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Board — <?= safe($platform['name']) ?></title>
+<title>Board — <?= safe($meet['name']) ?> — <?= safe($platform['name']) ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -297,7 +297,7 @@ th{background:#1a1a1a;position:sticky;top:0}
 <body>
 <div class="board">
   <div class="header">
-    <div class="platform-title"><?= safe($platform['name']) ?> — <?= safe($meet['name']) ?></div>
+    <div class="platform-title"><?= safe($meet['name']) ?> — Board Plataforma: <?= safe($platform['name']) ?></div>
     <div class="timer" id="timer">1:00</div>
     <div style="text-align:right">
       <div id="current-name" style="font-size:1.5rem;font-weight:700">--</div>
@@ -313,7 +313,7 @@ th{background:#1a1a1a;position:sticky;top:0}
   <div class="ref-result" id="ref-result"></div>
 
   <div class="plate-loading">
-    <h3>Carga de Discos (por lado)</h3>
+    <h3>Peso en la barra:</h3>
     <div class="plates-row">
       <div id="plates"></div>
       <div class="rack-info" id="rack-info">Rack: --</div>
@@ -325,10 +325,10 @@ th{background:#1a1a1a;position:sticky;top:0}
       <thead>
         <tr>
           <th>Nombre</th>
-          <th>BW</th>
+          <th>Peso corporal</th>
           <th>S1</th><th>S2</th><th>S3</th><th>S4</th>
           <th>B1</th><th>B2</th><th>B3</th><th>B4</th>
-          <th>Sub</th>
+          <th>Subtotal</th>
           <th>D1</th><th>D2</th><th>D3</th><th>D4</th>
           <th>Total</th>
         </tr>
@@ -337,7 +337,7 @@ th{background:#1a1a1a;position:sticky;top:0}
     </table>
   </div>
 
-  <div class="next-lifter" id="next-bar">NEXT — TBD</div>
+  <div class="next-lifter" id="next-bar">Siguiente — Esperando...</div>
 </div>
 
 <script>
@@ -397,7 +397,7 @@ function renderLights(){
       if(el) el.classList.add(c.call);
     });
     const goods = calls.filter(c => c.call === 'good').length;
-    document.getElementById('ref-result').textContent = goods >= 2 ? '✅ GOOD LIFT!' : '❌ NO LIFT';
+    document.getElementById('ref-result').textContent = goods >= 2 ? '¡Intento válido!' : '¡Intento nulo!';
     document.getElementById('ref-result').style.color = goods >= 2 ? '#0f0' : '#f00';
   } else {
     // Show voted (gray) but not color
@@ -456,7 +456,7 @@ function renderPlates(){
   
   // Si no se pudo cargar exactamente, mostrar advertencia
   if(remaining > 0.1){
-    document.getElementById('plates').innerHTML = `<span style="color:#f00">⚠️ Discos insuficientes (faltan ${remaining.toFixed(2)}kg por lado)</span>`;
+    document.getElementById('plates').innerHTML = `<span style="color:#f00">Discos insuficientes (faltan ${remaining.toFixed(2)}kg por lado)</span>`;
     return;
   }
   
@@ -531,7 +531,7 @@ function renderNext(){
   const curId = state.current_attempt_id;
   
   for(const comp of state.competitors || []){
-    for(const [key, name] of [['squats','S'],['bench','B'],['deadlift','D']]){
+    for(const [key, name] of [['squats','Sentadilla '],['bench','Press Banca '],['deadlift','Peso Muerto ']]){
       for(let i=0; i<comp[key].length; i++){
         const a = comp[key][i];
         if(a.weight && a.success === null && a.id !== curId){
@@ -542,9 +542,9 @@ function renderNext(){
   }
   
   if(next){
-    document.getElementById('next-bar').textContent = `NEXT — ${next.name} — ${next.lift}${next.num}: ${next.weight}kg` + (next.rack ? ` — Rack: ${next.rack}` : '');
+    document.getElementById('next-bar').textContent = `Siguiente — ${next.name} — ${next.lift}${next.num}: ${next.weight}kg` + (next.rack ? ` — Rack: ${next.rack}` : '');
   } else {
-    document.getElementById('next-bar').textContent = 'NEXT — Esperando...';
+    document.getElementById('next-bar').textContent = 'Siguiente — Esperando...';
   }
 }
 
@@ -552,5 +552,6 @@ function renderNext(){
 fetchState();
 setInterval(fetchState, 1000);
 </script>
+
 </body>
 </html>

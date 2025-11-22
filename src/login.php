@@ -50,9 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="collapse navbar-collapse" id="navbarNav">
       <ul class="navbar-nav ms-auto">
-        <li class="nav-item"><a class="nav-link" href="">Demo</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Docs</a></li>
-        <li class="nav-item"><a class="nav-link" href="create_meet.php">Create Meet</a></li>
+        <li class="nav-item"><a class="nav-link" href="create_meet.php">Crear Meet</a></li>
       </ul>
     </div>
   </div>
@@ -65,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <h3 class="mb-4 text-danger fw-bold">Iniciar Sesión</h3>
 
         <?php if (isset($_GET['registered'])): ?>
-            <div class="alert alert-success py-2">✅ Registro exitoso. Ahora puedes iniciar sesión.</div>
+            <div class="alert alert-success py-2">Registro exitoso. Ahora puedes iniciar sesión.</div>
         <?php endif; ?>
 
         <?php if ($error): ?>

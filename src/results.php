@@ -299,11 +299,49 @@ foreach($divisions as $div) {
 <link rel="stylesheet" href="assets/styles.css">
 <style>
 body{background:#000;color:#fff;margin:0;overflow-x:hidden}
-.sidebar{position:fixed;left:-250px;top:0;width:250px;height:100vh;background:#0a0a0a;border-right:2px solid #e60000;transition:left 0.3s;z-index:1000;overflow-y:auto;padding:1rem}
+.sidebar{
+  position:fixed;
+  left:-250px;
+  top:0;
+  width:250px;
+  height:100vh;
+  background:#0a0a0a;
+  border-right:2px solid #e60000;
+  transition:left 0.3s;
+  z-index:1000;
+  overflow-y:auto;
+  padding:1rem;
+}
 .sidebar.open{left:0}
-.sidebar-toggle{position:fixed;top:1rem;left:1rem;z-index:1001;background:#e60000;color:#fff;border:none;padding:0.5rem 1rem;border-radius:0.25rem;cursor:pointer;font-size:1.2rem}
-.sidebar h5{color:#e60000;border-bottom:2px solid #e60000;padding-bottom:0.5rem;margin-bottom:1rem}
-.sidebar a{color:#fff;text-decoration:none;display:block;padding:0.5rem;border-radius:0.25rem;margin-bottom:0.25rem}
+.sidebar-toggle{
+  position:fixed;
+  top:1rem;
+  left:1rem;
+  z-index:1001;
+  background:#e60000;
+  color:#fff;
+  border:none;
+  padding:0.5rem 1rem;
+  border-radius:0.25rem;
+  cursor:pointer;
+  font-size:1.2rem;
+}
+.sidebar h5{
+  color:#e60000;
+  border-bottom:2px solid #e60000;
+  padding-bottom:0.5rem;
+  margin-bottom:1rem;
+  font-size:1rem;
+}
+.sidebar a{
+  color:#fff;
+  text-decoration:none;
+  display:block;
+  padding:0.5rem;
+  border-radius:0.25rem;
+  margin-bottom:0.25rem;
+  font-size:0.9rem;
+}
 .sidebar a:hover,.sidebar a.active{background:#e60000}
 .sidebar .submenu{padding-left:1rem}
 .results-table{font-size:0.8rem;margin-bottom:3rem}
@@ -332,6 +370,7 @@ body{background:#000;color:#fff;margin:0;overflow-x:hidden}
   <a href="liveFeed.php?meet=<?=$meet_id?>">Feed en Vivo</a>
   <a href="results.php?meet=<?=$meet_id?>" class="active">Resultados</a>
   <a href="roster.php?meet=<?=$meet_id?>">Lista de Orden</a>
+  <a href="stats.php?meet=<?=$meet_id?>">Estadísticas</a>
   
   <?php foreach($platforms as $p): ?>
     <div class="mt-3">
@@ -348,12 +387,12 @@ body{background:#000;color:#fff;margin:0;overflow-x:hidden}
   <?php endforeach; ?>
 </div>
 
-<div style="margin-left:1rem;padding:2rem">
-  <h1 class="text-danger mb-4">Resultados de Competencia</h1>
+<div style="margin-left:1rem; padding:1rem;">
+  <h1 class="text-danger mb-4 fw-bold">'    ' Resultados — <?= htmlspecialchars($meet['name']) ?></h1>
   
   <div class="mb-3">
-    <button class="btn btn-secondary" onclick="window.print()">🖨️ Imprimir</button>
-    <button class="btn btn-secondary" onclick="exportResults()">📥 Exportar</button>
+    <button class="btn btn-secondary" onclick="window.print()">Imprimir</button>
+    <button class="btn btn-secondary" onclick="exportResults()">Exportar</button>
   </div>
   
   <?php if (empty($results_by_division)): ?>
@@ -440,14 +479,13 @@ body{background:#000;color:#fff;margin:0;overflow-x:hidden}
                   <td class="<?=$class?>"><?=$weight !== null ? $weight : '-'?></td>
                 <?php endfor; ?>
                 
-                <td><strong><?=$lifter['total'] > 0 ? $lifter['total'] : 'BOMB'?></strong></td>
+                <td><strong><?=$lifter['total'] > 0 ? $lifter['total'] : '---'?></strong></td>
                 <td><?=$lifter['score'] > 0 ? number_format($lifter['score'], 2) : '-'?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-      <p class="text-muted small">* Intento 4 = Intento de récord (no cuenta para el total)</p>
     <?php endforeach; ?>
   <?php endforeach; ?>
 </div>
@@ -461,6 +499,8 @@ function exportResults() {
   window.location.href = 'export_results.php?meet=<?=$meet_id?>';
 }
 </script>
-
+<footer class="mt-5 text-center text-secondary">
+    © 2025 USLCast
+</footer>
 </body>
 </html>

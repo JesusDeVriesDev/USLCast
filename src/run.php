@@ -578,10 +578,10 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="title">Run — <?= safe($meet['name']) ?> — <?= safe($platform['name']) ?></div>
+    <div class="title"><?= safe($meet['name']) ?> — Run Plataforma: <?= safe($platform['name']) ?></div>
     <div style="margin-left:auto;display:flex;gap:8px">
-      <button class="btn" id="select-first">Select First</button>
-      <button class="btn-ghost" id="toggle-autoscroll">Autoscroll: ON</button>
+      <button class="btn" id="select-first">Seleccionar primer intento</button>
+      <button class="btn-ghost" id="toggle-autoscroll">Autoscroll: Activado</button>
     </div>
   </div>
 
@@ -606,7 +606,7 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
       <!-- Timer -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div>
-          <div class="small">Timer</div>
+          <div class="small">Contador</div>
           <div style="font-size:2.5rem;font-weight:700;font-family:monospace" id="timer-display">01:00</div>
         </div>
         <div>
@@ -620,7 +620,7 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
 
       <!-- Referee Lights -->
       <div>
-        <div class="small">Referee Lights</div>
+        <div class="small">Luces de jueces</div>
         <div class="ref-lights">
           <div class="ref-light" id="r1"></div>
           <div class="ref-light" id="r2"></div>
@@ -633,7 +633,7 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
 
       <!-- Equipment Config -->
       <div>
-        <div class="small" style="margin-bottom:8px">Equipment (por plataforma)</div>
+        <div class="small" style="margin-bottom:8px">Barra y collarines</div>
         <div class="equipment-row">
           <label>Barra:</label>
           <input type="number" id="bar-weight" value="<?= $bar_weight ?>" step="0.5"> kg
@@ -642,26 +642,26 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
           <label>Collarines (c/u):</label>
           <input type="number" id="collar-weight" value="<?= $collar_weight ?>" step="0.5"> kg
         </div>
-        <button class="btn-ghost" id="save-equipment" style="width:100%;margin-top:4px">💾 Guardar Equipment</button>
+        <button class="btn-ghost" id="save-equipment" style="width:100%;margin-top:4px">Guardar configuración</button>
       </div>
 
       <hr style="border-color:#333;margin:12px 0">
 
       <!-- Rack Heights -->
       <div>
-        <div class="small">Rack Heights</div>
+        <div class="small">Racks</div>
         <div id="lifter-name-display" style="font-weight:700;margin:4px 0">--</div>
         <div style="display:flex;gap:8px">
           <div style="flex:1">
-            <label class="small">Squat</label>
+            <label class="small">Sentadilla</label>
             <input type="text" id="squat-rack" style="width:100%;padding:6px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px" disabled>
           </div>
           <div style="flex:1">
-            <label class="small">Bench</label>
+            <label class="small">Press Banca</label>
             <input type="text" id="bench-rack" style="width:100%;padding:6px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px" disabled>
           </div>
         </div>
-        <button class="btn-ghost" id="save-rack" style="width:100%;margin-top:8px" disabled>💾 Guardar Rack</button>
+        <button class="btn-ghost" id="save-rack" style="width:100%;margin-top:8px" disabled>Guardar racks</button>
       </div>
     </div>
   </div>
@@ -868,7 +868,7 @@ function renderRefLights(){
       if(el) el.classList.add(c.call);
     });
     const goods = calls.filter(c => c.call === 'good').length;
-    document.getElementById('ref-summary').textContent = goods >= 2 ? '✅ GOOD LIFT' : '❌ NO LIFT';
+    document.getElementById('ref-summary').textContent = goods >= 2 ? '¡Intento válido!' : '¡Intento nulo!';
   } else {
     // Show who has voted (gray) but not their vote
     calls.forEach(c => {
@@ -962,7 +962,7 @@ document.getElementById('select-first').onclick = async () => {
 
 document.getElementById('toggle-autoscroll').onclick = () => {
   autoscroll = !autoscroll;
-  document.getElementById('toggle-autoscroll').textContent = 'Autoscroll: ' + (autoscroll ? 'ON' : 'OFF');
+  document.getElementById('toggle-autoscroll').textContent = 'Autoscroll: ' + (autoscroll ? 'Activado' : 'Desactivado');
 };
 
 function esc(s){ return s == null ? '' : String(s); }

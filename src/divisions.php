@@ -173,7 +173,7 @@ body{background:#000;color:#fff}
           </td>
           <td>
             <div class="weight-classes-container">
-              <button class="btn btn-sm btn-outline-light manage-weights" data-id="<?=$d['id']?>">⚙️ Clases de peso</button>
+              <button class="btn btn-sm btn-outline-light manage-weights" data-id="<?=$d['id']?>">Clases de peso</button>
             </div>
           </td>
           <td><input class="form-control bg-dark text-light field-code" value="<?= htmlspecialchars($d['division_code']) ?>" style="width:100px"></td>
@@ -181,8 +181,8 @@ body{background:#000;color:#fff}
             <input type="checkbox" class="field-hidden" <?= $d['hidden_on_board']?'checked':''?>>
           </td>
           <td>
-            <button class="btn btn-sm btn-success btn-save">💾</button>
-            <button class="btn btn-sm btn-danger btn-delete">🗑</button>
+            <button class="btn btn-sm btn-success btn-save">Guardar</button>
+            <button class="btn btn-sm btn-danger btn-delete">Borrar</button>
           </td>
         </tr>
         <?php endforeach;?>
@@ -320,7 +320,7 @@ document.querySelectorAll('.btn-save').forEach(btn=>{
     if (!j.ok) alert('Error: '+j.error);
     else {
       e.target.textContent = '✓';
-      setTimeout(()=>e.target.textContent='💾',800);
+      setTimeout(()=>e.target.textContent='Guardar',800);
     }
   });
 });
