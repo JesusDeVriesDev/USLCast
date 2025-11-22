@@ -475,6 +475,9 @@ if (isset($_GET['ajax'])) {
         } elseif ($cmd === 'reset') {
             $timer['running'] = false; $timer['started_at'] = null;
             $timer['duration'] = isset($data['duration']) ? (int)$data['duration'] : 60;
+        } elseif ($cmd === 'set_duration') {
+            // Solo actualizar la duración sin afectar el estado de running
+            $timer['duration'] = isset($data['duration']) ? (int)$data['duration'] : 60;
         }
         $settings['timer'] = $timer;
         $pdo->prepare("UPDATE platforms SET settings = :s WHERE id = :id")->execute(['s'=>json_encode($settings),'id'=>$platform_id]);
@@ -615,6 +618,12 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
           <button class="btn-ghost" id="timer-reset">↺</button>
         </div>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <label class="small">Tiempo:</label>
+        <input type="number" id="timer-duration" value="60" min="1" max="300" step="1" style="width:70px;padding:6px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px;text-align:center"> 
+        <span class="small">segundos</span>
+        <button class="btn-ghost" id="set-timer" style="padding:6px 10px">Aplicar</button>
+      </div>
 
       <hr style="border-color:#333;margin:12px 0">
 
@@ -640,7 +649,7 @@ body{background:#0f0f0f;color:#fff;font-family:Inter,Arial,Helvetica,sans-serif;
         </div>
         <div class="equipment-row">
           <label>Collarines (c/u):</label>
-          <input type="number" id="collar-weight" value="<?= $collar_weight ?>" step="0.5"> kg
+          <input type="number" id="collar-weight" value="<?= $collar_weight ?>"> kg
         </div>
         <button class="btn-ghost" id="save-equipment" style="width:100%;margin-top:4px">Guardar configuración</button>
       </div>
@@ -798,21 +807,20 @@ function showPopover(e, comp, at, liftType){
   const aid = at.data ? (at.data.id || at.data.attempt_id) : -( comp.id*1000 + at.attempt_number + (liftType==='Bench'?100:(liftType==='Deadlift'?200:0)) );
   
   const actions = [
-    {t:'✓ Set Current', fn: ()=> api('set_current',{attempt_id:aid}).then(fetchState)},
-    {t:'✅ Mark GOOD', fn: ()=> {
+    {t:'Seleccionar como intento actual', fn: ()=> api('set_current',{attempt_id:aid}).then(fetchState)},
+    {t:'Marcar como válido', fn: ()=> {
       const p = {attempt_id:aid, result:'good'};
       if(!at.data) Object.assign(p,{competitor_id:comp.id,lift_type:liftType,attempt_number:at.attempt_number,weight:at.weight});
       api('mark',p).then(fetchState);
     }},
-    {t:'❌ Mark BAD', fn: ()=> {
+    {t:'Marcar como nulo', fn: ()=> {
       const p = {attempt_id:aid, result:'bad'};
       if(!at.data) Object.assign(p,{competitor_id:comp.id,lift_type:liftType,attempt_number:at.attempt_number,weight:at.weight});
       api('mark',p).then(fetchState);
     }},
-    {t:'🔚 Move to End', fn: ()=> api('move_end',{attempt_id:aid}).then(fetchState)},
-    {t:'🏆 State Record', fn: ()=> api('record',{attempt_id:aid,record_type:'State'}).then(fetchState)},
-    {t:'🏆 National Record', fn: ()=> api('record',{attempt_id:aid,record_type:'National'}).then(fetchState)},
-    {t:'🏆 World Record', fn: ()=> api('record',{attempt_id:aid,record_type:'World'}).then(fetchState)},
+    {t:'Record Estatal', fn: ()=> api('record',{attempt_id:aid,record_type:'State'}).then(fetchState)},
+    {t:'Record Nacional', fn: ()=> api('record',{attempt_id:aid,record_type:'National'}).then(fetchState)},
+    {t:'Record Mundial', fn: ()=> api('record',{attempt_id:aid,record_type:'World'}).then(fetchState)},
   ];
   
   actions.forEach(a => {
@@ -921,13 +929,34 @@ function renderRack(){
 }
 
 // Event listeners
-document.getElementById('timer-start').onclick = () => api('timer',{cmd:'start',duration:60}).then(fetchState);
-document.getElementById('timer-pause').onclick = () => api('timer',{cmd:'pause'}).then(fetchState);
-document.getElementById('timer-reset').onclick = () => api('timer',{cmd:'reset',duration:60}).then(fetchState);
+document.getElementById('timer-start').onclick = async (e) => {
+  e.preventDefault();
+  const duration = parseInt(document.getElementById('timer-duration').value) || 60;
+  await api('timer',{cmd:'start',duration:duration});
+  fetchState();
+};
+document.getElementById('timer-pause').onclick = async (e) => {
+  e.preventDefault();
+  await api('timer',{cmd:'pause'});
+  fetchState();
+};
+document.getElementById('timer-reset').onclick = async (e) => {
+  e.preventDefault();
+  const duration = parseInt(document.getElementById('timer-duration').value) || 60;
+  await api('timer',{cmd:'reset',duration:duration});
+  fetchState();
+};
+
+document.getElementById('set-timer').onclick = async (e) => {
+  e.preventDefault();
+  const duration = parseInt(document.getElementById('timer-duration').value) || 60;
+  await api('timer',{cmd:'set_duration',duration:duration});
+  fetchState();
+};
 
 document.getElementById('save-equipment').onclick = async () => {
   const bar = parseFloat(document.getElementById('bar-weight').value) || 20;
-  const collar = parseFloat(document.getElementById('collar-weight').value) || 2.5;
+  const collar = parseFloat(document.getElementById('collar-weight').value) || 0;
   await api('update_equipment', {bar_weight:bar, collar_weight:collar});
   alert('Equipment guardado');
 };

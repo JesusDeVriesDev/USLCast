@@ -47,7 +47,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'state') {
     $settings = json_decode($platform['settings'] ?? '{}', true) ?: [];
     
     $bar_weight = $settings['bar_weight'] ?? 20;
-    $collar_weight = $settings['collar_weight'] ?? 2.5;
+    $collar_weight = $settings['collar_weight'] ?? 0;
     
     // Load competitors
     $sql = "SELECT c.*, 
@@ -276,8 +276,24 @@ body{background:#000;color:#fff;font-family:Arial,sans-serif;overflow:hidden}
 
 .plate-loading{background:#1a1a1a;border:2px solid #333;border-radius:8px;padding:12px;margin-bottom:12px}
 .plate-loading h3{margin-bottom:8px;font-size:1.2rem}
-.plates-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.plate{padding:6px 10px;border-radius:4px;font-weight:700;font-size:1.1rem;border:2px solid #fff}
+.plates-row{display:flex;gap:4px;align-items:center;justify-content:center}
+.bar-container{display:flex;align-items:center;gap:2px}
+.bar-center{width:200px;height:20px;background:#666;border-radius:2px}
+.plate-side{display:flex;gap:2px;align-items:center}
+.plate{min-width:40px;height:80px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;border:2px solid rgba(0,0,0,0.3);position:relative;writing-mode:vertical-rl;text-orientation:mixed}
+.plate-50{height:120px}
+.plate-25{height:100px}
+.plate-20{height:90px}
+.plate-15{height:80px}
+.plate-10{height:70px}
+.plate-5{height:60px}
+.plate-2_5{height:50px}
+.plate-2{height:45px}
+.plate-1_25{height:40px}
+.plate-1{height:35px}
+.plate-0_5{height:30px}
+.plate-0_25{height:25px}
+.collar{width:15px;height:25px;background:#333;border:2px solid #555;border-radius:2px}
 .rack-info{margin-left:auto;font-size:1.2rem;font-weight:700;color:#ffcc00}
 
 .attempts-table{flex:1;overflow:auto}
@@ -300,22 +316,36 @@ th{background:#1a1a1a;position:sticky;top:0}
     <div class="platform-title"><?= safe($meet['name']) ?> — Board Plataforma: <?= safe($platform['name']) ?></div>
     <div class="timer" id="timer">1:00</div>
     <div style="text-align:right">
-      <div id="current-name" style="font-size:1.5rem;font-weight:700">--</div>
-      <div id="current-lift" style="font-size:1.1rem">--</div>
+      <div id="current-name" style="font-size:2.5rem;font-weight:700">--</div>
+      <div id="current-lift" style="font-size:2.1rem">--</div>
     </div>
   </div>
 
-  <div class="ref-lights">
-    <div class="ref-light" id="r1"></div>
-    <div class="ref-light" id="r2"></div>
-    <div class="ref-light" id="r3"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="flex:1">
+      <img src="img/dflogo.jpg" alt="Logo" style="width:150px;height:150px;object-fit:cover;border-radius:50%">
+    </div>
+    <div class="ref-lights">
+      <div class="ref-light" id="r1"></div>
+      <div class="ref-light" id="r2"></div>
+      <div class="ref-light" id="r3"></div>
+    </div>
+    <div style="flex:1"></div>
   </div>
   <div class="ref-result" id="ref-result"></div>
 
   <div class="plate-loading">
     <h3>Peso en la barra:</h3>
-    <div class="plates-row">
-      <div id="plates"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="plates-row">
+        <div class="bar-container" id="bar-container">
+          <div class="collar"></div>
+          <div class="plate-side" id="plates-left"></div>
+          <div class="bar-center"></div>
+          <div class="plate-side" id="plates-right"></div>
+          <div class="collar"></div>
+        </div>
+      </div>
       <div class="rack-info" id="rack-info">Rack: --</div>
     </div>
   </div>
@@ -415,17 +445,22 @@ function renderPlates(){
   const rack = state.current?.rack;
   document.getElementById('rack-info').textContent = rack ? 'Rack: ' + rack : 'Rack: --';
   
+  const leftEl = document.getElementById('plates-left');
+  const rightEl = document.getElementById('plates-right');
+  
   if(!weight){
-    document.getElementById('plates').innerHTML = '<span style="color:#666">--</span>';
+    leftEl.innerHTML = '';
+    rightEl.innerHTML = '';
     return;
   }
   
   const bar = state.bar_weight || 20;
-  const collar = state.collar_weight || 2.5;
+  const collar = state.collar_weight || 0;
   const perSide = (weight - bar - collar*2) / 2;
   
   if(perSide <= 0){
-    document.getElementById('plates').innerHTML = `<span>Solo barra (${bar}kg) + collarines (${collar*2}kg)</span>`;
+    leftEl.innerHTML = '';
+    rightEl.innerHTML = '';
     return;
   }
   
@@ -456,13 +491,25 @@ function renderPlates(){
   
   // Si no se pudo cargar exactamente, mostrar advertencia
   if(remaining > 0.1){
-    document.getElementById('plates').innerHTML = `<span style="color:#f00">Discos insuficientes (faltan ${remaining.toFixed(2)}kg por lado)</span>`;
+    leftEl.innerHTML = `<span style="color:#f00;writing-mode:horizontal-tb">Discos insuficientes</span>`;
+    rightEl.innerHTML = '';
     return;
   }
   
-  document.getElementById('plates').innerHTML = plates.map(p => 
-    `<div class="plate" style="background:${p.c};color:${contrast(p.c)}">${p.w}</div>`
-  ).join('') || '<span>--</span>';
+  // Renderizar discos en ambos lados
+  const plateHTML = plates.map(p => {
+    const sizeClass = 'plate-' + p.w.toString().replace('.','_');
+    return `<div class="plate ${sizeClass}" style="background:${p.c};color:${contrast(p.c)}">${p.w}</div>`;
+  }).join('');
+  
+  // Lado izquierdo: orden inverso (del más grande al más pequeño desde la barra)
+  const leftPlateHTML = plates.slice().reverse().map(p => {
+    const sizeClass = 'plate-' + p.w.toString().replace('.','_');
+    return `<div class="plate ${sizeClass}" style="background:${p.c};color:${contrast(p.c)}">${p.w}</div>`;
+  }).join('');
+  
+  leftEl.innerHTML = leftPlateHTML;
+  rightEl.innerHTML = plateHTML;
 }
 
 function contrast(hex){

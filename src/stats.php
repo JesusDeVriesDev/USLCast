@@ -257,7 +257,6 @@ body{background:#000;color:#fff}
 
 <div class="sidebar" id="sidebar">
   <h5><?=htmlspecialchars($meet['name'])?></h5>
-  <a href="liveFeed.php?meet=<?=$meet_id?>">Feed en Vivo</a>
   <a href="results.php?meet=<?=$meet_id?>">Resultados</a>
   <a href="roster.php?meet=<?=$meet_id?>">Lista de Orden</a>
   <a href="stats.php?meet=<?=$meet_id?>" class="active">Estadísticas</a>
@@ -268,6 +267,7 @@ body{background:#000;color:#fff}
       <div class="submenu">
         <a href="run.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Ejecutar</a>
         <a href="board.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Tablero</a>
+        <a href="liveFeed.php?meet=<?=$meet_id?>&platform=<?=$p['id']?>">Feed en Vivo</a>
         <a href="display.php?platform=<?=$p['id']?>">Pantalla</a>
         <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=1">Ref - Izquierda</a>
         <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=2">Ref - Central</a>
@@ -278,7 +278,7 @@ body{background:#000;color:#fff}
 </div>
 
 <div style="margin-left:1rem; padding:1rem;">
-  <h2 class="text-danger mb-4 fw-bold">Estadísticas — <?=htmlspecialchars($meet['name'])?></h2>
+  <h2 class="text-danger mb-4 fw-bold">' '  Estadísticas — <?=htmlspecialchars($meet['name'])?></h2>
 
   <?php if (empty($sessions)): ?>
     <div class="alert alert-warning">

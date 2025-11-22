@@ -180,7 +180,6 @@ body{
 
 <div class="sidebar" id="sidebar">
   <h5><?=htmlspecialchars($meet['name'])?></h5>
-  <a href="liveFeed.php?meet=<?=$meet_id?>">Feed en Vivo</a>
   <a href="results.php?meet=<?=$meet_id?>">Resultados</a>
   <a href="roster.php?meet=<?=$meet_id?>" class="active">Lista de Orden</a>
   <a href="stats.php?meet=<?=$meet_id?>">Estadísticas</a>
@@ -191,6 +190,7 @@ body{
       <div class="submenu">
         <a href="run.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Ejecutar</a>
         <a href="board.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>">Tablero</a>
+        <a href="liveFeed.php?meet=<?=$meet_id?>&platform=<?=$p['id']?>">Feed en Vivo</a>
         <a href="display.php?platform=<?=$p['id']?>">Pantalla</a>
         <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=1">Ref - Izquierda</a>
         <a href="referee.php?meet=<?=$meet['id']?>&platform=<?=$p['id']?>&ref=2">Ref - Central</a>
@@ -258,6 +258,6 @@ document.addEventListener('click', function(e) {
   }
 });
 </script>
-
+<footer class="mt-5 text-center text-secondary">© 2025 USLCast</footer> 
 </body>
 </html>

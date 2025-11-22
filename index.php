@@ -61,11 +61,11 @@ catch(Exception $e){ die("DB error: ".$e->getMessage()); }
                 <div class="card example-card shadow-lg">
                     <div class="card-body">
                         <h4 class="card-title text-danger fw-bold mb-3">Competición</h4>
-                        <p><strong>Nombre:</strong> Felix Power 2025</p>
-                        <p><strong>Plataformas:</strong> 2</p>
-                        <p><strong>Competidores:</strong> 24</p>
-                        <p><strong>Fecha:</strong> 22/11/2025</p>
-                        <p><strong>Hora de inicio:</strong> 12:00PM</p>
+                        <p><strong>Nombre:</strong> Deadlift Battle 2025</p>
+                        <p><strong>Flights:</strong> 2</p>
+                        <p><strong>Competidores:</strong> 12</p>
+                        <p><strong>Fecha:</strong> 23/11/2025</p>
+                        <p><strong>Hora de inicio:</strong> 8:00AM</p>
                         <p><strong>Estado:</strong> <span class="badge bg-success">En marcha</span></p>
 
                         <hr class="border-danger opacity-50">
@@ -73,7 +73,7 @@ catch(Exception $e){ die("DB error: ".$e->getMessage()); }
                         <h5 class="mt-4 mb-3 text-danger">Buscar competidor</h5>
                         <form class="d-flex" role="search">
                             <input class="form-control me-2 bg-dark text-light border-danger" type="search" placeholder="Nombre o número">
-                            <button class="btn btn-red" type="submit">Buscar</button>
+                            <a href="src/results.php?meet=1" class="btn btn-red">Buscar</a>
                         </form>
                     </div>
                 </div>
